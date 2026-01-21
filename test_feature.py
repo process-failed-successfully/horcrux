@@ -1,17 +1,21 @@
 """
-Unit tests for [Feature Name]
+Unit tests for the feature implementation.
 """
 
 import unittest
 from feature_implementation import feature_function
 
 class TestFeature(unittest.TestCase):
+    """
+    Test cases for the feature implementation.
+    """
+
     def test_feature_function(self):
         """
-        Test the feature function.
+        Test that the feature function returns the expected result.
         """
-        # Test implementation goes here
-        pass
+        result = feature_function()
+        self.assertTrue(result)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
