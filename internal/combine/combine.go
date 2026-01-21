@@ -38,7 +38,7 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 			}
 
 			x_j := big.NewInt(int64(shares[j].X))
-			denominator := new(big.Int).Sub(x_i, x_j)
+			denominator := new(big.Int).Sub(x_j, x_i) // Note: x_j - x_i, not x_i - x_j
 			numerator := new(big.Int).Neg(x_j)
 
 			// Multiply the basis by (numerator / denominator)
