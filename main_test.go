@@ -9,9 +9,14 @@ import (
 
 func TestAppendLogEntry(t *testing.T) {
 	// Setup test environment
-	testDir := "test_logs"
+	testDir := "test_logs_append"
 	os.Setenv("LOG_DIR", testDir)
 	defer os.RemoveAll(testDir)
+
+	// Create test directory
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
 
 	// Test data
 	testData := map[string]interface{}{
@@ -53,6 +58,11 @@ func TestReadLogEntries(t *testing.T) {
 	os.Setenv("LOG_DIR", testDir)
 	defer os.RemoveAll(testDir)
 
+	// Create test directory
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+
 	// Create test log file
 	logFile := filepath.Join(testDir, logFileName)
 	testData := `{"id":"test-1","timestamp":"2023-01-01T00:00:00Z","data":{"event":"test"}}
@@ -83,6 +93,11 @@ func TestImmutableLog(t *testing.T) {
 	testDir := "test_logs_immutable"
 	os.Setenv("LOG_DIR", testDir)
 	defer os.RemoveAll(testDir)
+
+	// Create test directory
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
 
 	// Append initial entry
 	testData := map[string]interface{}{
