@@ -1,17 +1,18 @@
-.PHONY: setup test run clean cli
+.PHONY: all test integration clean
 
-setup:
-	chmod +x init.sh
-	./init.sh
+all: test
 
 test:
-	go test ./...
+	go test ./... -v
 
-run:
-	go run cmd/server/main.go
+test-storage:
+	go test ./internal/storage -v
 
-cli:
-	go run cmd/cli/main.go
+test-retrieval:
+	go test ./internal/retrieval -v
+
+integration:
+	go run integration.go
 
 clean:
-	go clean
+	rm -f integration.go
