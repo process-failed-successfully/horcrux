@@ -58,24 +58,26 @@ func NewSWIM(config Config) *SWIM {
 		config.SuspicionMultiplier = 3
 	}
 
-	return &SWIM{
+	swim := &SWIM{
 		config: config,
 		nodes:  make(map[string]*Node),
 		done:   make(chan struct{}),
 	}
+
+	// Add self to the node list
+	selfNode := &Node{
+		ID:      config.NodeID,
+		Address: config.AdvertiseAddr,
+		State:   NodeAlive,
+	}
+	swim.addNode(selfNode)
+
+	return swim
 }
 
 // Start starts the SWIM gossip provider
 func (s *SWIM) Start() error {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-
-	// Add self to the node list
-	selfNode := &Node{
-		ID:      s.config.NodeID,
-		Address: s.config.AdvertiseAddr,
-		State:   NodeAlive,
-	}
-	s.addNode(selfNode)
 
 	// Initialize discovery service
 	s.discoveryService = NewDiscoveryService(s, s.config.DiscoveryConfig)
@@ -104,7 +106,14 @@ func (s *SWIM) Stop() error {
 		s.discoveryService.Stop()
 	}
 
-	close(s.done)
+	// Only close done channel if it's not already closed
+	select {
+	case <-s.done:
+		// Already closed
+	default:
+		close(s.done)
+	}
+
 	log.Printf("SWIM gossip provider stopped for node %s", s.config.NodeID)
 	return nil
 }
