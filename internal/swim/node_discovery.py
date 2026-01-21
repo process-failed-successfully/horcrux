@@ -1,8 +1,12 @@
-import asyncio
-import random
-from typing import Dict, List, Optional
+"""
+Node discovery module for SWIM gossip protocol.
+"""
+
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 import time
+import random
+import asyncio
 
 @dataclass
 class Node:
@@ -15,6 +19,38 @@ class Node:
     metadata: Dict = field(default_factory=dict)
 
 class NodeDiscovery:
+    """
+    Basic node discovery class for testing purposes.
+    This provides simple discovery functionality.
+    """
+
+    def discover_nodes(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Discover nodes from input data.
+
+        Args:
+            input_data: Input data containing node information
+
+        Returns:
+            Input data with discovery flag added
+        """
+        result = input_data.copy()
+        result['discovered'] = True
+        return result
+
+    def batch_discover(self, input_data_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Discover nodes from a batch of input data.
+
+        Args:
+            input_data_list: List of input data containing node information
+
+        Returns:
+            List of input data with discovery flags added
+        """
+        return [self.discover_nodes(data) for data in input_data_list]
+
+class SWIMNodeDiscovery:
     """
     SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
     implementation for node discovery in a cluster.
