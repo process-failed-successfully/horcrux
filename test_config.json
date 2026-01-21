@@ -1,4 +1,6 @@
 {
-    "feature_id": "test_feature",
-    "param": "test_value"
+    "node_id": "test_node_1",
+    "address": "192.168.1.100",
+    "port": 9090,
+    "gossip_interval": 0.5
 }
