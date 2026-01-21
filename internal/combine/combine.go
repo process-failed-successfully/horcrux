@@ -42,7 +42,6 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 	// Iterate through each share
 	for i := 0; i < threshold; i++ {
 		// Calculate the Lagrange basis polynomial
-		basis := big.NewInt(1)
 		x_i := big.NewInt(int64(shares[i].X))
 
 		// Calculate numerator product: product((0 - x_j)) for j != i
@@ -67,7 +66,8 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 		}
 
 		// Calculate basis = numeratorProduct / denominatorProduct
-		basis.Div(numeratorProduct, denominatorProduct)
+		// We need to use modular inverse for proper division in finite fields
+		basis := new(big.Int).Div(numeratorProduct, denominatorProduct)
 
 		// Multiply the basis by the share value and add to the result
 		term := new(big.Int).Mul(basis, shares[i].Y)
