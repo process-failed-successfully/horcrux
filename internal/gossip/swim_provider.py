@@ -34,12 +34,12 @@ class SWIMGossipProvider:
         self.probe_timeout = self.config.get('probe_timeout', 1.0)
 
         # Add self to members
-        self._add_node(Node(node_id, host, port, time.time()))
+        self._add_node(Node(node_id=node_id, address=host, port=port, last_seen=time.time()))
 
     def _add_node(self, node: Node) -> None:
         """Add a node to the membership list."""
         with self.lock:
-            self.members[node.id] = node
+            self.members[node.node_id] = node
 
     def _remove_node(self, node_id: str) -> None:
         """Remove a node from the membership list."""
@@ -83,12 +83,12 @@ class SWIMGossipProvider:
             return  # Only self in the list
 
         target = random.choice(nodes)
-        if target.id == self.node_id:
+        if target.node_id == self.node_id:
             return  # Don't gossip with self
 
         # In a real implementation, this would send a gossip message
         # For now, we'll just simulate it
-        print(f"Gossiping with {target.id}")
+        print(f"Gossiping with {target.node_id}")
 
     def get_members(self) -> List[Node]:
         """Get the current list of members."""
