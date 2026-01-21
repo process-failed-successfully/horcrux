@@ -66,7 +66,7 @@ func NewSWIM(config Config) *SWIM {
 
 	s := &SWIM{
 		config: config,
-		nodes:  make(map[string]node),
+		nodes:  make(map[string]*Node),
 	}
 
 	// Add self to the node list

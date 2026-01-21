@@ -2,7 +2,6 @@ package gossip
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )

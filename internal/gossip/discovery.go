@@ -1,10 +1,10 @@
 package gossip
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"sync"
 	"time"
