@@ -59,6 +59,8 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 			denominator := new(big.Int).Sub(x_i, x_j)
 
 			// Multiply the basis by (numerator / denominator)
+			// We need to do this as: basis = basis * numerator * modInverse(denominator, nil)
+			// But since we're not working modulo anything, we can just do division
 			basis.Mul(basis, numerator)
 			basis.Div(basis, denominator)
 		}
