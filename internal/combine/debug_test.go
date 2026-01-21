@@ -2,7 +2,6 @@ package combine
 
 import (
 	"fmt"
-	"math/big"
 	"testing"
 
 	"github.com/process-failed-successfully/horcrux/internal/split"
