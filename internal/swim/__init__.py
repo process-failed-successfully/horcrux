@@ -5,6 +5,6 @@ This module provides implementations for distributed node discovery and failure 
 using the SWIM gossip protocol.
 """
 
-from .node_discovery import NodeDiscovery
+from .node_discovery import SWIMNodeDiscovery, Node
 
-__all__ = ['NodeDiscovery']
+__all__ = ['SWIMNodeDiscovery', 'Node']
