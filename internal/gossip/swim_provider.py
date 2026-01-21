@@ -1,100 +1,95 @@
 import time
 import threading
 import random
-from typing import Dict, List, Optional, Callable
-from .types import Node, Message
+from typing import Dict, List, Optional
+from internal.gossip.types import Node, NodeStatus
 
-class SWIMGossipProvider:
+class SWIMProvider:
     """
     SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
     Gossip provider for node discovery and failure detection.
     """
 
-    def __init__(self, node_id: str, host: str, port: int, config: Optional[Dict] = None):
+    def __init__(self, node_id: str = "default-node", port: int = 8080,
+                 gossip_interval: float = 1.0, protocol_period: float = 1.0):
         """
-        Initialize the SWIM Gossip provider.
+        Initialize the SWIM Gossip provider with configuration.
 
         Args:
             node_id: Unique identifier for this node
-            host: Host address for this node
-            port: Port number for this node
-            config: Optional configuration dictionary
+            port: Port to listen on
+            gossip_interval: Interval between gossip rounds in seconds
+            protocol_period: Protocol period for SWIM in seconds
         """
         self.node_id = node_id
-        self.host = host
         self.port = port
-        self.config = config or {}
-        self.running = False
-        self.members: Dict[str, Node] = {}
+        self.gossip_interval = gossip_interval
+        self.protocol_period = protocol_period
+
+        # Node management
+        self.nodes: Dict[str, Node] = {}
         self.lock = threading.Lock()
+        self.is_running = False
+        self.gossip_thread: Optional[threading.Thread] = None
 
-        # Default configuration
-        self.gossip_interval = self.config.get('gossip_interval', 1.0)
-        self.failure_timeout = self.config.get('failure_timeout', 3.0)
-        self.probe_timeout = self.config.get('probe_timeout', 1.0)
+        # Add self to the node list
+        self._add_node(Node(
+            id=self.node_id,
+            address=f"localhost:{self.port}",
+            status=NodeStatus.ALIVE,
+            incarnation=0
+        ))
 
-        # Add self to members
-        self._add_node(Node(node_id=node_id, address=host, port=port, last_seen=time.time()))
-
-    def _add_node(self, node: Node) -> None:
-        """Add a node to the membership list."""
+    def _add_node(self, node: Node):
+        """Add or update a node in the local node list."""
         with self.lock:
-            self.members[node.node_id] = node
+            self.nodes[node.id] = node
 
-    def _remove_node(self, node_id: str) -> None:
-        """Remove a node from the membership list."""
+    def _remove_node(self, node_id: str):
+        """Remove a node from the local node list."""
         with self.lock:
-            if node_id in self.members:
-                del self.members[node_id]
+            if node_id in self.nodes:
+                del self.nodes[node_id]
 
-    def start(self) -> None:
-        """Start the gossip provider."""
-        if self.running:
+    def start(self):
+        """Start the SWIM gossip provider."""
+        if self.is_running:
             return
 
-        self.running = True
+        self.is_running = True
         self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
         self.gossip_thread.start()
 
-    def stop(self) -> None:
-        """Stop the gossip provider gracefully."""
-        self.running = False
-        if hasattr(self, 'gossip_thread'):
+    def stop(self):
+        """Stop the SWIM gossip provider gracefully."""
+        self.is_running = False
+        if self.gossip_thread:
             self.gossip_thread.join(timeout=1.0)
+            self.gossip_thread = None
 
-    def _gossip_loop(self) -> None:
-        """Main gossip loop."""
-        while self.running:
+    def _gossip_loop(self):
+        """Main gossip loop that runs periodically."""
+        while self.is_running:
             try:
-                self._perform_gossip()
+                self._perform_gossip_round()
                 time.sleep(self.gossip_interval)
             except Exception as e:
                 print(f"Error in gossip loop: {e}")
                 time.sleep(1.0)
 
-    def _perform_gossip(self) -> None:
+    def _perform_gossip_round(self):
         """Perform a single gossip round."""
-        if not self.members:
-            return
+        # In a real implementation, this would:
+        # 1. Select a random node to ping
+        # 2. Perform the ping
+        # 3. Update node status based on response
+        # 4. Share membership information
+        pass
 
-        # Select a random node to gossip with
-        nodes = list(self.members.values())
-        if len(nodes) == 1:
-            return  # Only self in the list
-
-        target = random.choice(nodes)
-        if target.node_id == self.node_id:
-            return  # Don't gossip with self
-
-        # In a real implementation, this would send a gossip message
-        # For now, we'll just simulate it
-        print(f"Gossiping with {target.node_id}")
-
-    def get_members(self) -> List[Node]:
-        """Get the current list of members."""
+    def get_nodes(self) -> List[Node]:
+        """Get the current list of known nodes."""
         with self.lock:
-            return list(self.members.values())
+            return list(self.nodes.values())
 
-    def is_running(self) -> bool:
-        """Check if the provider is running."""
-        return self.running
+    def __str__(self):
+        return f"SWIMProvider(node_id={self.node_id}, port={self.port}, nodes={len(self.nodes)})"
