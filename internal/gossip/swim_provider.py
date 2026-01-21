@@ -1,257 +1,275 @@
 #!/usr/bin/env python3
 """
-SWIM Gossip Provider Module
-
-This module implements the SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
 Gossip provider for node discovery in distributed systems.
+Implements the SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
+for failure detection and membership management.
 """
 
 import json
-import sys
-import time
-import threading
 import random
-from typing import Dict, Any, Optional, List, Set
-from dataclasses import dataclass
+import threading
+import time
+import uuid
+from typing import Dict, List, Optional, Any
 
-# Sentinel value to distinguish between no argument and None
-_UNSET = object()
-
-@dataclass
 class Node:
-    """Represents a node in the gossip network."""
-    id: str
-    address: str
-    port: int
-    last_seen: float
-    status: str = "alive"
+    """
+    Represents a node in the gossip network.
+    """
+
+    def __init__(self, node_id: str, address: str, port: int):
+        """
+        Initialize a node.
+
+        Args:
+            node_id: Unique identifier for the node
+            address: IP address of the node
+            port: Port number of the node
+        """
+        self.id = node_id
+        self.address = address
+        self.port = port
+        self.last_seen = time.time()
+        self.status = "alive"
+        self.failure_count = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert node to dictionary representation.
+
+        Returns:
+            Dictionary containing node information
+        """
+        return {
+            "id": self.id,
+            "address": self.address,
+            "port": self.port,
+            "last_seen": self.last_seen,
+            "status": self.status,
+            "failure_count": self.failure_count
+        }
+
+    def update_last_seen(self):
+        """
+        Update the last seen timestamp.
+        """
+        self.last_seen = time.time()
+
+    def mark_failed(self):
+        """
+        Mark the node as failed.
+        """
+        self.status = "failed"
+        self.failure_count += 1
+
+    def mark_alive(self):
+        """
+        Mark the node as alive.
+        """
+        self.status = "alive"
 
 class SWIMGossipProvider:
     """
     SWIM Gossip Provider for node discovery and failure detection.
 
-    SWIM is a gossip-based membership protocol that provides:
+    Features:
     - Node discovery
     - Failure detection
-    - Scalability
+    - Periodic gossip
+    - Configurable timeouts
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = _UNSET):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize the SWIM Gossip provider.
+        Initialize the SWIM gossip provider.
 
         Args:
-            config: Optional configuration dictionary. If not provided, uses all defaults.
-                   If None is explicitly provided, raises ValueError.
-
-        Raises:
-            ValueError: If configuration is invalid type (not dict) or None
+            config: Configuration dictionary. If None, uses defaults.
         """
-        # Check if None was explicitly provided
-        if config is None:
-            raise ValueError("Configuration must be a dictionary, None is not allowed")
-
-        # If no argument provided, use empty dict for defaults
-        if config is _UNSET:
-            config = {}
-
-        # Validate config type
-        if not isinstance(config, dict):
-            raise ValueError("Configuration must be a dictionary")
-
-        self.config = config
-
         # Default configuration
-        self.node_id = self.config.get("node_id", f"node_{random.randint(1000, 9999)}")
-        self.address = self.config.get("address", "127.0.0.1")
-        self.port = self.config.get("port", 8080)
-        self.gossip_interval = self.config.get("gossip_interval", 1.0)
-        self.ping_timeout = self.config.get("ping_timeout", 0.5)
-        self.probe_timeout = self.config.get("probe_timeout", 1.0)
+        self._defaults = {
+            "node_id": f"node_{random.randint(1000, 9999)}",
+            "address": "127.0.0.1",
+            "port": 8080,
+            "gossip_interval": 1.0,
+            "ping_timeout": 0.5,
+            "probe_timeout": 1.0,
+            "max_failure_count": 3
+        }
 
-        # Validate configuration values
-        self._validate_config_values()
+        # Apply configuration
+        if config is None:
+            self.config = self._defaults
+        elif isinstance(config, dict):
+            self.config = {**self._defaults, **config}
+        else:
+            raise ValueError("Configuration must be a dictionary or None")
 
-        # Node state
+        # Initialize from config
+        self.node_id = self.config["node_id"]
+        self.address = self.config["address"]
+        self.port = self.config["port"]
+        self.gossip_interval = self.config["gossip_interval"]
+        self.ping_timeout = self.config["ping_timeout"]
+        self.probe_timeout = self.config["probe_timeout"]
+        self.max_failure_count = self.config["max_failure_count"]
+
+        # Node management
         self.nodes: Dict[str, Node] = {}
         self.lock = threading.Lock()
+
+        # Add self to the node list
+        self._add_node(self.node_id, self.address, self.port)
+
+        # Gossip state
         self.running = False
         self.gossip_thread: Optional[threading.Thread] = None
 
-        # Initialize with self
-        self._add_node(self.node_id, self.address, self.port)
-
-    def _validate_config_values(self) -> None:
+    def _add_node(self, node_id: str, address: str, port: int) -> Node:
         """
-        Validate individual configuration values.
-
-        Raises:
-            ValueError: If any configuration value is invalid
-        """
-        if not isinstance(self.node_id, str) or not self.node_id:
-            raise ValueError("node_id must be a non-empty string")
-
-        if not isinstance(self.address, str) or not self.address:
-            raise ValueError("address must be a non-empty string")
-
-        if not isinstance(self.port, int) or not (0 < self.port < 65536):
-            raise ValueError("port must be an integer between 1 and 65535")
-
-        if not isinstance(self.gossip_interval, (int, float)) or self.gossip_interval <= 0:
-            raise ValueError("gossip_interval must be a positive number")
-
-        if not isinstance(self.ping_timeout, (int, float)) or self.ping_timeout <= 0:
-            raise ValueError("ping_timeout must be a positive number")
-
-        if not isinstance(self.probe_timeout, (int, float)) or self.probe_timeout <= 0:
-            raise ValueError("probe_timeout must be a positive number")
-
-    def _add_node(self, node_id: str, address: str, port: int) -> None:
-        """
-        Add a node to the local node list.
+        Add a node to the membership list (internal method).
 
         Args:
             node_id: Unique identifier for the node
-            address: Network address of the node
-            port: Network port of the node
+            address: IP address of the node
+            port: Port number of the node
+
+        Returns:
+            The created Node object
         """
         with self.lock:
-            self.nodes[node_id] = Node(
-                id=node_id,
-                address=address,
-                port=port,
-                last_seen=time.time(),
-                status="alive"
-            )
+            if node_id not in self.nodes:
+                node = Node(node_id, address, port)
+                self.nodes[node_id] = node
+                return node
+            return self.nodes[node_id]
 
-    def _update_node(self, node_id: str) -> None:
+    def add_node(self, node_id: str, address: str, port: int) -> Node:
+        """
+        Public method to add a node to the membership list.
+
+        Args:
+            node_id: Unique identifier for the node
+            address: IP address of the node
+            port: Port number of the node
+
+        Returns:
+            The created Node object
+        """
+        return self._add_node(node_id, address, port)
+
+    def remove_node(self, node_id: str) -> bool:
+        """
+        Remove a node from the membership list.
+
+        Args:
+            node_id: Unique identifier for the node to remove
+
+        Returns:
+            True if node was removed, False if node didn't exist
+        """
+        with self.lock:
+            if node_id in self.nodes and node_id != self.node_id:
+                del self.nodes[node_id]
+                return True
+            return False
+
+    def _update_node(self, node_id: str):
         """
         Update the last seen timestamp for a node.
 
         Args:
-            node_id: Unique identifier for the node
+            node_id: Unique identifier for the node to update
         """
         with self.lock:
             if node_id in self.nodes:
-                self.nodes[node_id].last_seen = time.time()
-                self.nodes[node_id].status = "alive"
-
-    def _gossip_loop(self) -> None:
-        """
-        Main gossip loop that runs periodically to exchange node information.
-        """
-        while self.running:
-            try:
-                # Simulate gossip protocol
-                self._perform_gossip()
-                time.sleep(self.gossip_interval)
-            except Exception as e:
-                print(f"Error in gossip loop: {e}")
-                time.sleep(1)
-
-    def _perform_gossip(self) -> None:
-        """
-        Perform a single gossip round.
-        """
-        # In a real implementation, this would:
-        # 1. Select a random node to gossip with
-        # 2. Exchange node lists
-        # 3. Update local state
-        # For now, we just update our own timestamp
-        self._update_node(self.node_id)
-
-    def start(self) -> None:
-        """
-        Start the SWIM Gossip provider.
-        """
-        if self.running:
-            return
-
-        self.running = True
-        self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
-        self.gossip_thread.start()
-        print(f"SWIM Gossip provider started for node {self.node_id}")
-
-    def stop(self) -> None:
-        """
-        Stop the SWIM Gossip provider gracefully.
-        """
-        self.running = False
-        if self.gossip_thread:
-            self.gossip_thread.join(timeout=2.0)
-        print(f"SWIM Gossip provider stopped for node {self.node_id}")
+                self.nodes[node_id].update_last_seen()
 
     def get_nodes(self) -> List[Dict[str, Any]]:
         """
-        Get the list of known nodes.
+        Get the list of all nodes.
 
         Returns:
             List of node dictionaries
         """
         with self.lock:
-            return [
-                {
-                    "id": node.id,
-                    "address": node.address,
-                    "port": node.port,
-                    "last_seen": node.last_seen,
-                    "status": node.status
-                }
-                for node in self.nodes.values()
-            ]
+            return [node.to_dict() for node in self.nodes.values()]
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_node(self, node_id: str) -> Optional[Node]:
         """
-        Get the current configuration.
+        Get a specific node by ID.
+
+        Args:
+            node_id: Unique identifier for the node
 
         Returns:
-            Dictionary containing the current configuration
+            Node object if found, None otherwise
         """
-        return {
-            "node_id": self.node_id,
-            "address": self.address,
-            "port": self.port,
-            "gossip_interval": self.gossip_interval,
-            "ping_timeout": self.ping_timeout,
-            "probe_timeout": self.probe_timeout
-        }
+        with self.lock:
+            return self.nodes.get(node_id)
 
-def main():
-    """
-    Main entry point for testing the SWIM Gossip provider.
-    """
-    # Load configuration if provided
-    config = {}
-    if len(sys.argv) > 1:
-        try:
-            with open(sys.argv[1], 'r') as f:
-                config = json.load(f)
-        except Exception as e:
-            print(f"Error loading config: {e}")
-            sys.exit(1)
+    def _detect_failures(self):
+        """
+        Detect failed nodes based on last seen timestamps and failure counts.
+        """
+        current_time = time.time()
+        with self.lock:
+            for node_id, node in list(self.nodes.items()):
+                if node_id == self.node_id:
+                    continue  # Don't check ourselves
 
-    # Initialize the provider
-    provider = SWIMGossipProvider(config)
+                # Check if node hasn't been seen for too long
+                time_since_seen = current_time - node.last_seen
+                if node.status == "alive":
+                    if time_since_seen > self.probe_timeout:
+                        node.failure_count += 1
+                        if node.failure_count >= self.max_failure_count:
+                            node.mark_failed()
+                elif node.status == "failed":
+                    # Failed nodes can be removed after some time
+                    if time_since_seen > self.probe_timeout * 2:
+                        del self.nodes[node_id]
 
-    try:
-        # Start the provider
-        provider.start()
+    def _gossip_loop(self):
+        """
+        Main gossip loop that runs periodically.
+        """
+        while self.running:
+            try:
+                # Detect failures
+                self._detect_failures()
 
-        # Print configuration
-        print(f"Configuration: {json.dumps(provider.get_config(), indent=2)}")
+                # Sleep for the gossip interval
+                time.sleep(self.gossip_interval)
+            except Exception as e:
+                print(f"Error in gossip loop: {e}")
+                break
 
-        # Run for a few seconds
-        time.sleep(3)
+    def start(self):
+        """
+        Start the gossip provider.
+        """
+        if not self.running:
+            self.running = True
+            self.gossip_thread = threading.Thread(
+                target=self._gossip_loop,
+                daemon=True
+            )
+            self.gossip_thread.start()
+            print(f"SWIM Gossip provider started for node {self.node_id}")
 
-        # Get and print node list
-        nodes = provider.get_nodes()
-        print(f"Known nodes: {json.dumps(nodes, indent=2)}")
+    def stop(self):
+        """
+        Stop the gossip provider.
+        """
+        self.running = False
+        if self.gossip_thread:
+            self.gossip_thread.join(timeout=1.0)
+            self.gossip_thread = None
+        print(f"SWIM Gossip provider stopped for node {self.node_id}")
 
-    except KeyboardInterrupt:
-        print("Shutting down...")
-    finally:
-        # Stop the provider
-        provider.stop()
-
-if __name__ == "__main__":
-    main()
+    def __del__(self):
+        """
+        Cleanup when the provider is destroyed.
+        """
+        self.stop()
