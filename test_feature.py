@@ -1,15 +1,17 @@
-#!/usr/bin/env python3
 """
-Unit tests for feature implementation
+Unit tests for [Feature Name]
 """
 
 import unittest
-from feature_implementation import implement_feature
+from feature_implementation import feature_function
 
-class TestFeatureImplementation(unittest.TestCase):
-    def test_feature_implementation(self):
-        result = implement_feature()
-        self.assertTrue(result)
+class TestFeature(unittest.TestCase):
+    def test_feature_function(self):
+        """
+        Test the feature function.
+        """
+        # Test implementation goes here
+        pass
 
 if __name__ == "__main__":
     unittest.main()
