@@ -8,6 +8,39 @@ import (
 	"github.com/process-failed-successfully/horcrux/internal/split"
 )
 
+// Prime modulus for finite field arithmetic
+// This should match the prime used in the split operation
+var prime = new(big.Int).SetBytes([]byte{
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD,
+})
+
+// modInverse computes the modular inverse of a modulo prime
+func modInverse(a *big.Int) *big.Int {
+	// Using Fermat's Little Theorem: a^(p-2) ≡ a^(-1) mod p
+	// Since p is prime and a < p
+	pMinus2 := new(big.Int).Sub(prime, big.NewInt(2))
+	return new(big.Int).Exp(a, pMinus2, prime)
+}
+
+// modDiv performs modular division: (a / b) mod prime
+func modDiv(a, b *big.Int) *big.Int {
+	invB := modInverse(b)
+	return new(big.Int).Mul(a, invB)
+}
+
+// modMul performs modular multiplication: (a * b) mod prime
+func modMul(a, b *big.Int) *big.Int {
+	return new(big.Int).Mul(a, b)
+}
+
+// modAdd performs modular addition: (a + b) mod prime
+func modAdd(a, b *big.Int) *big.Int {
+	return new(big.Int).Add(a, b)
+}
+
 // CombineShares reconstructs the secret from a subset of shares
 func CombineShares(shares []split.Share, threshold int) (string, error) {
 	if len(shares) < threshold {
@@ -58,20 +91,19 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 
 			// numerator = (0 - x_j) = -x_j
 			numerator := new(big.Int).Neg(x_j)
-			numeratorProduct.Mul(numeratorProduct, numerator)
+			numeratorProduct = modMul(numeratorProduct, numerator)
 
 			// denominator = (x_i - x_j)
 			denominator := new(big.Int).Sub(x_i, x_j)
-			denominatorProduct.Mul(denominatorProduct, denominator)
+			denominatorProduct = modMul(denominatorProduct, denominator)
 		}
 
-		// Calculate basis = numeratorProduct / denominatorProduct
-		// We need to use modular inverse for proper division in finite fields
-		basis := new(big.Int).Div(numeratorProduct, denominatorProduct)
+		// Calculate basis = numeratorProduct / denominatorProduct mod prime
+		basis := modDiv(numeratorProduct, denominatorProduct)
 
 		// Multiply the basis by the share value and add to the result
-		term := new(big.Int).Mul(basis, shares[i].Y)
-		result.Add(result, term)
+		term := modMul(basis, shares[i].Y)
+		result = modAdd(result, term)
 	}
 
 	return result
