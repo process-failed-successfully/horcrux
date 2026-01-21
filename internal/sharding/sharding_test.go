@@ -2,7 +2,6 @@ package sharding
 
 import (
 	"testing"
-	"horcruxkv/internal/storage"
 )
 
 func TestShardManagerCreation(t *testing.T) {
