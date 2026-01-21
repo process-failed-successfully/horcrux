@@ -10,9 +10,19 @@ import (
 )
 
 const (
-	logDir      = "data/logs"
 	logFileName = "log.jsonl"
 )
+
+var (
+	logDir = "data/logs"
+)
+
+func init() {
+	// Allow override via environment variable for testing
+	if envDir := os.Getenv("LOG_DIR"); envDir != "" {
+		logDir = envDir
+	}
+}
 
 type LogEntry struct {
 	ID        string      `json:"id"`
@@ -52,13 +62,13 @@ func appendLogEntry(data interface{}) error {
 
 	// Append to log file
 	logFile := getLogFilePath()
-	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %v", err)
 	}
-	defer file.Close()
+	defer f.Close()
 
-	if _, err := file.Write(append(jsonData, '\n')); err != nil {
+	if _, err := f.Write(append(jsonData, '\n')); err != nil {
 		return fmt.Errorf("failed to write to log file: %v", err)
 	}
 
@@ -67,16 +77,21 @@ func appendLogEntry(data interface{}) error {
 
 func readLogEntries() ([]LogEntry, error) {
 	logFile := getLogFilePath()
-	data, err := ioutil.ReadFile(logFile)
+
+	// Check if file exists
+	if _, err := os.Stat(logFile); os.IsNotExist(err) {
+		return []LogEntry{}, nil
+	}
+
+	// Read file
+	content, err := ioutil.ReadFile(logFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return []LogEntry{}, nil
-		}
 		return nil, fmt.Errorf("failed to read log file: %v", err)
 	}
 
+	// Parse JSON lines
 	var entries []LogEntry
-	for _, line := range splitLines(string(data)) {
+	for _, line := range splitLines(string(content)) {
 		if line == "" {
 			continue
 		}
@@ -94,16 +109,21 @@ func readLogEntries() ([]LogEntry, error) {
 
 func splitLines(s string) []string {
 	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
+	var current string
+
+	for _, r := range s {
+		if r == '\n' {
+			lines = append(lines, current)
+			current = ""
+		} else {
+			current += string(r)
 		}
 	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
+
+	if current != "" {
+		lines = append(lines, current)
 	}
+
 	return lines
 }
 
@@ -111,8 +131,8 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: local-storage <command> [args]")
 		fmt.Println("Commands:")
-		fmt.Println("  append <data>  - Append a log entry")
-		fmt.Println("  read           - Read all log entries")
+		fmt.Println("  append <json-data>  - Append a log entry")
+		fmt.Println("  read                - Read all log entries")
 		os.Exit(1)
 	}
 
@@ -121,19 +141,18 @@ func main() {
 	switch command {
 	case "append":
 		if len(os.Args) < 3 {
-			fmt.Println("Error: Missing data argument for append command")
+			fmt.Println("Usage: local-storage append <json-data>")
 			os.Exit(1)
 		}
 
-		data := os.Args[2]
-		var parsedData interface{}
-		if err := json.Unmarshal([]byte(data), &parsedData); err != nil {
-			fmt.Printf("Error: Invalid JSON data: %v\n", err)
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(os.Args[2]), &data); err != nil {
+			fmt.Printf("Error: invalid JSON data: %v\n", err)
 			os.Exit(1)
 		}
 
-		if err := appendLogEntry(parsedData); err != nil {
-			fmt.Printf("Error: Failed to append log entry: %v\n", err)
+		if err := appendLogEntry(data); err != nil {
+			fmt.Printf("Error: failed to append log entry: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -142,17 +161,16 @@ func main() {
 	case "read":
 		entries, err := readLogEntries()
 		if err != nil {
-			fmt.Printf("Error: Failed to read log entries: %v\n", err)
+			fmt.Printf("Error: failed to read log entries: %v\n", err)
 			os.Exit(1)
 		}
 
 		for _, entry := range entries {
-			fmt.Printf("ID: %s, Timestamp: %s, Data: %v\n",
-				entry.ID, entry.Timestamp.Format(time.RFC3339), entry.Data)
+			fmt.Printf("ID: %s, Timestamp: %s, Data: %v\n", entry.ID, entry.Timestamp.Format(time.RFC3339), entry.Data)
 		}
 
 	default:
-		fmt.Printf("Error: Unknown command '%s'\n", command)
+		fmt.Printf("Error: unknown command '%s'\n", command)
 		os.Exit(1)
 	}
 }
