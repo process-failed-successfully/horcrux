@@ -1,39 +1,25 @@
-.PHONY: help
-help:
-	@echo "Available targets:"
-	@echo "  help            - Show this help message"
-	@echo "  test            - Run all tests"
-	@echo "  lint            - Run linting"
-	@echo "  format          - Format code"
-	@echo "  install         - Install dependencies"
-	@echo "  clean           - Clean build artifacts"
+#!/usr/bin/make -f
 
-.PHONY: install
-install:
-	@echo "Installing dependencies..."
-	pip3 install -r requirements.txt 2>/dev/null || echo "No Python requirements.txt found"
-	npm install 2>/dev/null || echo "No Node.js package.json found"
+.PHONY: all test lint format run
 
-.PHONY: test
+all: test
+
 test:
 	@echo "Running tests..."
-	python3 -m pytest -v 2>/dev/null || echo "No Python tests found"
-	npm test 2>/dev/null || echo "No Node.js tests found"
+	python3 -m unittest test_feature_implementation.py -v
 
-.PHONY: lint
 lint:
 	@echo "Running linting..."
-	pylint *.py 2>/dev/null || echo "No Python files to lint"
-	eslint . 2>/dev/null || echo "No JavaScript files to lint"
+	python3 -m flake8 feature_implementation.py test_feature_implementation.py --max-line-length=120
 
-.PHONY: format
 format:
-	@echo "Formatting code..."
-	black *.py 2>/dev/null || echo "No Python files to format"
-	prettier --write . 2>/dev/null || echo "No JavaScript files to format"
+	@echo "Running formatting..."
+	python3 -m black feature_implementation.py test_feature_implementation.py
 
-.PHONY: clean
+run:
+	@echo "Running feature implementation..."
+	python3 feature_implementation.py
+
 clean:
-	@echo "Cleaning..."
-	rm -rf __pycache__ .pytest_cache
-	rm -rf node_modules
+	@echo "Cleaning up..."
+	rm -f *.pyc __pycache__ test_*.pyc
