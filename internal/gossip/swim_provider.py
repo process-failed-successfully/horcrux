@@ -38,20 +38,16 @@ class SWIMGossipProvider:
         Initialize the SWIM Gossip provider.
 
         Args:
-            config: Optional configuration dictionary
+            config: Optional configuration dictionary. If None, uses all defaults.
 
         Raises:
-            ValueError: If configuration is invalid
+            ValueError: If configuration is invalid type (not dict or None)
         """
-        # Validate config type first
-        if config is None:
-            # None is explicitly rejected by the test
-            raise ValueError("Configuration must be a dictionary, None is not allowed")
+        # Validate config type
+        if config is not None and not isinstance(config, dict):
+            raise ValueError("Configuration must be a dictionary or None for defaults")
 
-        if not isinstance(config, dict):
-            raise ValueError("Configuration must be a dictionary")
-
-        self.config = config
+        self.config = config if config is not None else {}
 
         # Default configuration
         self.node_id = self.config.get("node_id", f"node_{random.randint(1000, 9999)}")
