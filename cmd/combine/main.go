@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 
 	"github.com/process-failed-successfully/horcrux/internal/combine"
@@ -37,14 +38,14 @@ func main() {
 		shares = append(shares, share)
 	}
 
-	// Combine shares
+	// Combine shares (use threshold = number of shares provided)
 	secret, err := combine.CombineShares(shares, len(shares))
 	if err != nil {
 		fmt.Printf("Error combining shares: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Reconstructed secret: %s\n", secret)
+	fmt.Printf("Reconstructed secret (hex): %s\n", secret.Text(16))
 }
 
 func readShareFile(filename string) (split.Share, error) {
