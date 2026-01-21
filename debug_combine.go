@@ -1,14 +1,12 @@
-package combine
+package main
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/process-failed-successfully/horcrux/internal/split"
 )
 
-// Prime is a large prime number for the finite field (NIST P-256 prime)
 var Prime = new(big.Int).SetBytes([]byte{
 	0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -16,32 +14,6 @@ var Prime = new(big.Int).SetBytes([]byte{
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 })
 
-// CombineShares reconstructs the secret from a subset of shares
-func CombineShares(shares []split.Share, threshold int) (string, error) {
-	if len(shares) < threshold {
-		return "", errors.New("insufficient shares to reconstruct secret")
-	}
-
-	// Check for duplicate x-values
-	xValues := make(map[int]bool)
-	for _, share := range shares {
-		if xValues[share.X] {
-			return "", errors.New("duplicate share detected")
-		}
-		xValues[share.X] = true
-	}
-
-	// Perform Lagrange interpolation
-	secretInt := lagrangeInterpolation(shares)
-
-	// Convert the secret back to hex string with proper padding
-	// We need to ensure the hex representation matches exactly what was input
-	secretHex := fmt.Sprintf("%x", secretInt)
-
-	return secretHex, nil
-}
-
-// lagrangeInterpolation performs Lagrange interpolation to find the secret at x=0
 func lagrangeInterpolation(shares []split.Share) *big.Int {
 	result := big.NewInt(0)
 
@@ -65,13 +37,11 @@ func lagrangeInterpolation(shares []split.Share) *big.Int {
 		}
 
 		// Calculate the Lagrange basis polynomial term
-		// term = share.Y * (numerator / denominator)
 		term := new(big.Int).Set(share.Y)
 
 		// Compute modular inverse of denominator
 		denominatorInv := new(big.Int).ModInverse(denominator, Prime)
 		if denominatorInv == nil {
-			// This shouldn't happen with valid shares
 			continue
 		}
 
@@ -86,7 +56,28 @@ func lagrangeInterpolation(shares []split.Share) *big.Int {
 		// Add to result
 		result.Add(result, term)
 		result.Mod(result, Prime)
+
+		fmt.Printf("Share %d: X=%d, Y=%s\n", i, share.X, share.Y.String())
+		fmt.Printf("  numerator=%s, denominator=%s\n", numerator.String(), denominator.String())
+		fmt.Printf("  basis=%s, term=%s\n", basis.String(), term.String())
+		fmt.Printf("  result=%s\n", result.String())
 	}
 
 	return result
+}
+
+func main() {
+	// Test with the shares from the test
+	shares := []split.Share{
+		{X: 1, Y: big.NewInt(0x48656c6c6f)}, // "Hello"
+		{X: 2, Y: big.NewInt(0x5e737b3cece92dc17cc1407af3cd68a76b0d896e35693c434823284b6fecea5d)},
+		{X: 3, Y: big.NewInt(0x769de8e9621d3e915ac4403e9d04b3f169a0ec336b625f033ae1b38a63ae8480)},
+		{X: 4, Y: big.NewInt(0xc2b1ef21d8f3524f0c6b5cb615ab014090cea1af013a76d00ba1c10d7711d789)},
+		{X: 5, Y: big.NewInt(0xdf3f4ec9ffd5e8c8f630be4e415712dced02288953066a6fbf1495a3255fe313)},
+	}
+
+	result := lagrangeInterpolation(shares[:3])
+	fmt.Printf("\nFinal result: %s\n", result.String())
+	fmt.Printf("Expected: 0x48656c6c6f\n")
+	fmt.Printf("Match: %v\n", result.Cmp(big.NewInt(0x48656c6c6f)) == 0)
 }

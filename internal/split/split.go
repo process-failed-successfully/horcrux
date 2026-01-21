@@ -14,6 +14,14 @@ type Share struct {
 	Y *big.Int // The y-coordinate (share value)
 }
 
+// Prime is a large prime number for the finite field (NIST P-256 prime)
+var Prime = new(big.Int).SetBytes([]byte{
+	0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+})
+
 // SplitSecret splits a secret into n shares, requiring k shares to reconstruct
 func SplitSecret(secret string, n, k int) ([]Share, error) {
 	if k <= 1 {
@@ -51,7 +59,7 @@ func SplitSecret(secret string, n, k int) ([]Share, error) {
 func generateRandomCoefficients(k int) ([]*big.Int, error) {
 	coefficients := make([]*big.Int, k)
 	for i := 0; i < k; i++ {
-		coeff, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 256))
+		coeff, err := rand.Int(rand.Reader, Prime)
 		if err != nil {
 			return nil, err
 		}
@@ -69,7 +77,9 @@ func evaluatePolynomial(a0 *big.Int, coefficients []*big.Int, x int) *big.Int {
 		// term = coeff * x^(i+1)
 		term := new(big.Int).Set(coeff)
 		term.Mul(term, new(big.Int).Exp(xBig, big.NewInt(int64(i+1)), nil))
+		term.Mod(term, Prime)
 		result.Add(result, term)
+		result.Mod(result, Prime)
 	}
 
 	return result
