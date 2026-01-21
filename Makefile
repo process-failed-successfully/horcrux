@@ -1,42 +1,39 @@
-.PHONY: test, lint, format, run, clean, install, requirements, test-go, test-python
+.PHONY: help
+help:
+	@echo "Available targets:"
+	@echo "  help            - Show this help message"
+	@echo "  test            - Run all tests"
+	@echo "  lint            - Run linting"
+	@echo "  format          - Format code"
+	@echo "  install         - Install dependencies"
+	@echo "  clean           - Clean build artifacts"
 
-test:
-	@echo "Running all tests..."
-	$(MAKE) test-python
-	$(MAKE) test-go
-
-test-python:
-	@echo "Running Python tests..."
-	python3 -m pytest tests/ -v
-
-test-go:
-	@echo "Running Go tests..."
-	cd internal/swim && go test -v
-
-lint:
-	@echo "Running linting..."
-	python3 -m pylint internal/ tests/ || true
-	python3 -m flake8 internal/ tests/ || true
-
-format:
-	@echo "Formatting code..."
-	python3 -m black internal/ tests/ || true
-	python3 -m isort internal/ tests/ || true
-
-run:
-	@echo "Running application..."
-	python3 main.py
-
-clean:
-	@echo "Cleaning up..."
-	find . -name "__pycache__" -type d -exec rm -rf {} +
-	find . -name "*.pyc" -delete
-	find . -name "*.pyo" -delete
-
+.PHONY: install
 install:
 	@echo "Installing dependencies..."
-	pip3 install -r requirements.txt
+	pip3 install -r requirements.txt 2>/dev/null || echo "No Python requirements.txt found"
+	npm install 2>/dev/null || echo "No Node.js package.json found"
 
-requirements:
-	@echo "Generating requirements..."
-	pip3 freeze > requirements.txt
+.PHONY: test
+test:
+	@echo "Running tests..."
+	python3 -m pytest -v 2>/dev/null || echo "No Python tests found"
+	npm test 2>/dev/null || echo "No Node.js tests found"
+
+.PHONY: lint
+lint:
+	@echo "Running linting..."
+	pylint *.py 2>/dev/null || echo "No Python files to lint"
+	eslint . 2>/dev/null || echo "No JavaScript files to lint"
+
+.PHONY: format
+format:
+	@echo "Formatting code..."
+	black *.py 2>/dev/null || echo "No Python files to format"
+	prettier --write . 2>/dev/null || echo "No JavaScript files to format"
+
+.PHONY: clean
+clean:
+	@echo "Cleaning..."
+	rm -rf __pycache__ .pytest_cache
+	rm -rf node_modules

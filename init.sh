@@ -1,19 +1,24 @@
 #!/bin/bash
+set -e
 
-# Install system dependencies
-apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
+# Update package lists
+apt-get update
+
+# Install common development tools
+apt-get install -y --no-install-recommends \
+    build-essential \
     git \
     curl \
-    make \
+    jq \
+    python3 \
+    python3-pip \
+    python3-venv \
     nodejs \
-    npm
+    npm \
+    make
 
-# Install Python packages
-python3 -m pip install pytest
-
-# Install Node packages if needed
-npm install -g typescript
+# Clean up
+apt-get clean
+rm -rf /var/lib/apt/lists/*
 
 echo "Environment initialized successfully"
