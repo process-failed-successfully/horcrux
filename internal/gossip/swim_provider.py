@@ -14,6 +14,9 @@ import random
 from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass
 
+# Sentinel value to distinguish between no argument and None
+_UNSET = object()
+
 @dataclass
 class Node:
     """Represents a node in the gossip network."""
@@ -33,21 +36,30 @@ class SWIMGossipProvider:
     - Scalability
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = _UNSET):
         """
         Initialize the SWIM Gossip provider.
 
         Args:
-            config: Optional configuration dictionary. If None, uses all defaults.
+            config: Optional configuration dictionary. If not provided, uses all defaults.
+                   If None is explicitly provided, raises ValueError.
 
         Raises:
-            ValueError: If configuration is invalid type (not dict or None)
+            ValueError: If configuration is invalid type (not dict) or None
         """
-        # Validate config type
-        if config is not None and not isinstance(config, dict):
-            raise ValueError("Configuration must be a dictionary or None for defaults")
+        # Check if None was explicitly provided
+        if config is None:
+            raise ValueError("Configuration must be a dictionary, None is not allowed")
 
-        self.config = config if config is not None else {}
+        # If no argument provided, use empty dict for defaults
+        if config is _UNSET:
+            config = {}
+
+        # Validate config type
+        if not isinstance(config, dict):
+            raise ValueError("Configuration must be a dictionary")
+
+        self.config = config
 
         # Default configuration
         self.node_id = self.config.get("node_id", f"node_{random.randint(1000, 9999)}")
