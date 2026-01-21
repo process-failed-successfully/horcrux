@@ -1,10 +1,10 @@
 """
-SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol) Module
-
-This module provides implementations for distributed node discovery and failure detection
-using the SWIM gossip protocol.
+SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
+implementation for node discovery and failure detection.
 """
 
-from .node_discovery import SWIMNodeDiscovery, Node
+from .node_discovery import NodeDiscovery
+from .gossip import GossipProtocol
+from .gossip_propagation import GossipPropagation
 
-__all__ = ['SWIMNodeDiscovery', 'Node']
+__all__ = ['NodeDiscovery', 'GossipProtocol', 'GossipPropagation']

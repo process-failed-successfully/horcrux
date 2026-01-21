@@ -1,93 +1,231 @@
 """
-SWIM Gossip Provider
-
-Implements the gossip protocol for disseminating membership information.
+Gossip Protocol implementation for SWIM.
 """
 
 import random
 import time
-from typing import Dict, Any, List, Optional
-from dataclasses import asdict
-from .node_discovery import Node, NodeDiscovery
+import threading
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+import json
 
-class GossipProvider:
-    """
-    Gossip protocol implementation for SWIM.
-    """
+@dataclass
+class GossipMessage:
+    """Represents a gossip message."""
+    message_id: str
+    sender_id: str
+    content: Dict[str, Any]
+    timestamp: float
+    ttl: int = 5  # Time-to-live (number of hops)
 
-    def __init__(self, node_discovery: NodeDiscovery):
-        """
-        Initialize the GossipProvider.
-
-        Args:
-            node_discovery: NodeDiscovery instance
-        """
-        self.node_discovery = node_discovery
-        self.gossip_interval = 1.0  # seconds
-
-    def gossip(self) -> Dict[str, Any]:
-        """
-        Perform a gossip round and return the gossip message.
-
-        Returns:
-            Gossip message containing membership information
-        """
-        # Get a random subset of nodes to gossip about
-        nodes = self.node_discovery.discover_nodes()
-        if len(nodes) <= 1:
-            return {"nodes": []}
-
-        # Select a random node to gossip about
-        gossip_node = random.choice(nodes)
-        if gossip_node.id == self.node_discovery.node_id:
-            # Don't gossip about ourselves
-            gossip_node = random.choice([n for n in nodes if n.id != self.node_discovery.node_id])
-
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for serialization."""
         return {
-            "sender": self.node_discovery.node_id,
-            "timestamp": time.time(),
-            "node": asdict(gossip_node)
+            "message_id": self.message_id,
+            "sender_id": self.sender_id,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "ttl": self.ttl
         }
 
-    def receive_gossip(self, gossip_msg: Dict[str, Any]) -> None:
-        """
-        Receive and process a gossip message.
-
-        Args:
-            gossip_msg: Gossip message to process
-        """
-        node_data = gossip_msg.get('node', {})
-        if not node_data:
-            return
-
-        node = Node(
-            id=node_data['id'],
-            address=node_data['address'],
-            port=node_data['port'],
-            status=node_data.get('status', 'alive'),
-            last_seen=node_data.get('last_seen', time.time()),
-            metadata=node_data.get('metadata', {})
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'GossipMessage':
+        """Create from dictionary."""
+        return cls(
+            message_id=data["message_id"],
+            sender_id=data["sender_id"],
+            content=data["content"],
+            timestamp=data["timestamp"],
+            ttl=data.get("ttl", 5)
         )
 
-        # Update or add the node
-        existing_node = self.node_discovery.get_node(node.id)
-        if existing_node:
-            self.node_discovery._update_node(node)
-        else:
-            self.node_discovery._add_node(node)
+class GossipProtocol:
+    """
+    Gossip Protocol for message propagation in SWIM.
+    """
 
-    def propagate_gossip(self, gossip_msg: Dict[str, Any], target_nodes: List[str]) -> None:
+    def __init__(self, node_id: str, node_discovery: 'NodeDiscovery'):
         """
-        Propagate gossip to target nodes.
+        Initialize gossip protocol.
 
         Args:
-            gossip_msg: Gossip message to propagate
-            target_nodes: List of node IDs to propagate to
+            node_id: ID of the local node
+            node_discovery: NodeDiscovery instance for cluster membership
         """
-        # In a real implementation, this would send the message over the network
-        # For testing purposes, we'll simulate it by directly calling receive_gossip
-        for node_id in target_nodes:
-            if node_id != self.node_discovery.node_id:
-                # Simulate network transmission
-                time.sleep(0.01)
-                self.receive_gossip(gossip_msg)
+        self.node_id = node_id
+        self.node_discovery = node_discovery
+        self.message_store: Dict[str, GossipMessage] = {}
+        self.message_queue: List[GossipMessage] = []
+        self.running = False
+        self.gossip_thread: Optional[threading.Thread] = None
+        self.lock = threading.Lock()
+
+        # Configuration
+        self.gossip_interval = 0.5  # seconds
+        self.max_queue_size = 100
+
+    def start(self) -> None:
+        """Start the gossip protocol."""
+        if self.running:
+            return
+
+        self.running = True
+        self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
+        self.gossip_thread.start()
+
+    def stop(self) -> None:
+        """Stop the gossip protocol."""
+        self.running = False
+        if self.gossip_thread:
+            self.gossip_thread.join()
+
+    def _gossip_loop(self) -> None:
+        """Main gossip loop for message propagation."""
+        while self.running:
+            try:
+                self._process_queue()
+                self._propagate_messages()
+                time.sleep(self.gossip_interval)
+            except Exception as e:
+                print(f"Gossip protocol error: {e}")
+                time.sleep(1)
+
+    def _process_queue(self) -> None:
+        """Process incoming messages from the queue."""
+        with self.lock:
+            while self.message_queue:
+                message = self.message_queue.pop(0)
+                self._handle_message(message)
+
+    def _propagate_messages(self) -> None:
+        """Propagate messages to other nodes."""
+        with self.lock:
+            if not self.message_store:
+                return
+
+            # Get alive members to gossip with
+            members = self.node_discovery.get_alive_members()
+            if not members:
+                return
+
+            # Select a random subset of members to gossip with
+            targets = random.sample(members, min(3, len(members)))
+
+            # Select messages to propagate (avoid sending too many at once)
+            messages_to_send = list(self.message_store.values())[:5]
+
+            for target in targets:
+                if target.node_id == self.node_id:
+                    continue
+
+                try:
+                    self._send_messages(target, messages_to_send)
+                except Exception as e:
+                    print(f"Failed to send gossip to {target.node_id}: {e}")
+
+    def _send_messages(self, target: 'Node', messages: List[GossipMessage]) -> None:
+        """
+        Send messages to a target node.
+
+        Args:
+            target: Target node
+            messages: List of messages to send
+        """
+        # Simulate network communication
+        # In a real implementation, this would use actual network calls
+        try:
+            # Simulate network delay
+            time.sleep(0.05)
+
+            # Simulate 5% chance of message loss
+            if random.random() < 0.05:
+                return
+
+            # Process messages on the target node
+            for message in messages:
+                # Decrement TTL
+                message.ttl -= 1
+
+                if message.ttl > 0:
+                    # Add to target's queue
+                    # In real implementation, this would be sent over network
+                    pass
+
+        except Exception as e:
+            print(f"Message send error: {e}")
+
+    def _handle_message(self, message: GossipMessage) -> None:
+        """
+        Handle an incoming gossip message.
+
+        Args:
+            message: Incoming gossip message
+        """
+        with self.lock:
+            # Check if we've already seen this message
+            if message.message_id in self.message_store:
+                return
+
+            # Store the message
+            self.message_store[message.message_id] = message
+
+            # Process the message content
+            self._process_message_content(message)
+
+    def _process_message_content(self, message: GossipMessage) -> None:
+        """
+        Process the content of a gossip message.
+
+        Args:
+            message: Gossip message to process
+        """
+        # This would be overridden by specific implementations
+        pass
+
+    def inject_message(self, content: Dict[str, Any]) -> GossipMessage:
+        """
+        Inject a new gossip message into the system.
+
+        Args:
+            content: Message content
+
+        Returns:
+            Created gossip message
+        """
+        message_id = f"{self.node_id}-{time.time()}-{random.randint(0, 10000)}"
+        message = GossipMessage(
+            message_id=message_id,
+            sender_id=self.node_id,
+            content=content,
+            timestamp=time.time(),
+            ttl=5
+        )
+
+        with self.lock:
+            self.message_store[message_id] = message
+            self.message_queue.append(message)
+
+        return message
+
+    def get_message(self, message_id: str) -> Optional[GossipMessage]:
+        """
+        Get a message by ID.
+
+        Args:
+            message_id: Message ID
+
+        Returns:
+            GossipMessage if found, None otherwise
+        """
+        with self.lock:
+            return self.message_store.get(message_id)
+
+    def get_all_messages(self) -> List[GossipMessage]:
+        """
+        Get all stored messages.
+
+        Returns:
+            List of all gossip messages
+        """
+        with self.lock:
+            return list(self.message_store.values())

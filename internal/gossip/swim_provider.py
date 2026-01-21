@@ -1,95 +1,144 @@
-import time
-import threading
-import random
-from typing import Dict, List, Optional
-from internal.gossip.types import Node, NodeStatus
+"""
+SWIM Gossip Provider for Horcrux integration.
+"""
 
-class SWIMProvider:
+from typing import Dict, List, Optional, Tuple
+from ..swim.node_discovery import NodeDiscovery
+from ..swim.gossip import GossipProtocol
+from ..swim.gossip_propagation import GossipPropagation
+
+class SWIMGossipProvider:
     """
-    SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
-    Gossip provider for node discovery and failure detection.
+    SWIM Gossip Provider for Horcrux cluster management.
     """
 
-    def __init__(self, node_id: str = "default-node", port: int = 8080,
-                 gossip_interval: float = 1.0, protocol_period: float = 1.0):
+    def __init__(self, node_id: str, address: str, port: int, seed_nodes: Optional[List[Tuple[str, int]]] = None):
         """
-        Initialize the SWIM Gossip provider with configuration.
+        Initialize SWIM gossip provider.
 
         Args:
             node_id: Unique identifier for this node
-            port: Port to listen on
-            gossip_interval: Interval between gossip rounds in seconds
-            protocol_period: Protocol period for SWIM in seconds
+            address: Network address of this node
+            port: Network port of this node
+            seed_nodes: List of (address, port) tuples for initial cluster members
         """
         self.node_id = node_id
+        self.address = address
         self.port = port
-        self.gossip_interval = gossip_interval
-        self.protocol_period = protocol_period
 
-        # Node management
-        self.nodes: Dict[str, Node] = {}
-        self.lock = threading.Lock()
-        self.is_running = False
-        self.gossip_thread: Optional[threading.Thread] = None
+        # Initialize SWIM components
+        self.node_discovery = NodeDiscovery(node_id, address, port, seed_nodes)
+        self.gossip_protocol = GossipProtocol(node_id, self.node_discovery)
+        self.gossip_propagation = GossipPropagation(node_id, self.node_discovery)
 
-        # Add self to the node list
-        self._add_node(Node(
-            id=self.node_id,
-            address=f"localhost:{self.port}",
-            status=NodeStatus.ALIVE,
-            incarnation=0
-        ))
-
-    def _add_node(self, node: Node):
-        """Add or update a node in the local node list."""
-        with self.lock:
-            self.nodes[node.id] = node
-
-    def _remove_node(self, node_id: str):
-        """Remove a node from the local node list."""
-        with self.lock:
-            if node_id in self.nodes:
-                del self.nodes[node_id]
-
-    def start(self):
+    def start(self) -> None:
         """Start the SWIM gossip provider."""
-        if self.is_running:
-            return
+        self.node_discovery.start()
+        self.gossip_protocol.start()
+        self.gossip_propagation.start()
 
-        self.is_running = True
-        self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
-        self.gossip_thread.start()
+    def stop(self) -> None:
+        """Stop the SWIM gossip provider."""
+        self.node_discovery.stop()
+        self.gossip_protocol.stop()
+        self.gossip_propagation.stop()
 
-    def stop(self):
-        """Stop the SWIM gossip provider gracefully."""
-        self.is_running = False
-        if self.gossip_thread:
-            self.gossip_thread.join(timeout=1.0)
-            self.gossip_thread = None
+    def get_members(self) -> List[Dict]:
+        """
+        Get current cluster members.
 
-    def _gossip_loop(self):
-        """Main gossip loop that runs periodically."""
-        while self.is_running:
-            try:
-                self._perform_gossip_round()
-                time.sleep(self.gossip_interval)
-            except Exception as e:
-                print(f"Error in gossip loop: {e}")
-                time.sleep(1.0)
+        Returns:
+            List of member dictionaries
+        """
+        members = self.node_discovery.get_members()
+        return [member.to_dict() for member in members]
 
-    def _perform_gossip_round(self):
-        """Perform a single gossip round."""
-        # In a real implementation, this would:
-        # 1. Select a random node to ping
-        # 2. Perform the ping
-        # 3. Update node status based on response
-        # 4. Share membership information
-        pass
+    def get_alive_members(self) -> List[Dict]:
+        """
+        Get alive cluster members.
 
-    def get_nodes(self) -> List[Node]:
-        """Get the current list of known nodes."""
-        with self.lock:
-            return list(self.nodes.values())
+        Returns:
+            List of alive member dictionaries
+        """
+        members = self.node_discovery.get_alive_members()
+        return [member.to_dict() for member in members]
 
-    def __str__(self):
-        return f"SWIMProvider(node_id={self.node_id}, port={self.port}, nodes={len(self.nodes)})"
+    def inject_gossip_message(self, content: Dict) -> Dict:
+        """
+        Inject a gossip message into the cluster.
+
+        Args:
+            content: Message content
+
+        Returns:
+            Created message dictionary
+        """
+        message = self.gossip_protocol.inject_message(content)
+        return message.to_dict()
+
+    def get_gossip_message(self, message_id: str) -> Optional[Dict]:
+        """
+        Get a gossip message by ID.
+
+        Args:
+            message_id: Message ID
+
+        Returns:
+            Message dictionary if found, None otherwise
+        """
+        message = self.gossip_protocol.get_message(message_id)
+        return message.to_dict() if message else None
+
+    def get_propagation_status(self, message_id: str) -> Optional[Dict]:
+        """
+        Get propagation status for a message.
+
+        Args:
+            message_id: Message ID
+
+        Returns:
+            Propagation status dictionary
+        """
+        nodes = self.gossip_propagation.get_propagation_status(message_id)
+        if nodes:
+            return {"message_id": message_id, "received_by": list(nodes)}
+        return None
+
+    def is_fully_propagated(self, message_id: str) -> bool:
+        """
+        Check if a message has been fully propagated.
+
+        Args:
+            message_id: Message ID
+
+        Returns:
+            True if fully propagated, False otherwise
+        """
+        return self.gossip_propagation.is_fully_propagated(message_id)
+
+    def add_seed_node(self, address: str, port: int) -> None:
+        """
+        Add a seed node to the cluster.
+
+        Args:
+            address: Node address
+            port: Node port
+        """
+        self.node_discovery.add_node(address, port)
+
+    def configure(self, config: Dict) -> None:
+        """
+        Configure the SWIM provider.
+
+        Args:
+            config: Configuration dictionary
+        """
+        if 'gossip_interval' in config:
+            self.node_discovery.gossip_interval = config['gossip_interval']
+            self.gossip_protocol.gossip_interval = config['gossip_interval']
+
+        if 'ping_timeout' in config:
+            self.node_discovery.ping_timeout = config['ping_timeout']
+
+        if 'failure_threshold' in config:
+            self.node_discovery.failure_threshold = config['failure_threshold']

@@ -1,75 +1,106 @@
-#!/usr/bin/env python3
 """
-Integration tests for SWIM node discovery.
+Integration tests for SWIM Node Discovery.
 """
 
-import asyncio
+import unittest
 import time
-from internal.gossip.swim_gossip import SWIMGossipProvider
+from internal.swim.node_discovery import NodeDiscovery
 
-async def test_node_discovery_basic():
-    """Test basic node discovery between two nodes"""
-    # Create two nodes
-    node1 = SWIMGossipProvider("node1", "127.0.0.1", 9001)
-    node2 = SWIMGossipProvider("node2", "127.0.0.1", 9002, [("127.0.0.1", 9001)])
+class TestSWIMDiscovery(unittest.TestCase):
+    """Integration tests for SWIM Node Discovery."""
 
-    # Start both nodes
-    await node1.start()
-    await node2.start()
+    def test_cluster_formation(self):
+        """Test that a cluster can form with multiple nodes."""
+        # Create 3 nodes
+        node1 = NodeDiscovery("node1", "127.0.0.1", 8001)
+        node2 = NodeDiscovery("node2", "127.0.0.1", 8002, [("127.0.0.1", 8001)])
+        node3 = NodeDiscovery("node3", "127.0.0.1", 8003, [("127.0.0.1", 8001)])
 
-    # Give them time to discover each other
-    await asyncio.sleep(2)
+        # Start all nodes
+        node1.start()
+        node2.start()
+        node3.start()
 
-    # Check membership
-    membership1 = node1.get_membership()
-    membership2 = node2.get_membership()
+        # Wait for gossip to propagate
+        time.sleep(3)
 
-    print(f"Node1 membership: {[n.id for n in membership1.values()]}")
-    print(f"Node2 membership: {[n.id for n in membership2.values()]}")
+        # Verify all nodes have discovered each other
+        for node in [node1, node2, node3]:
+            members = node.get_members()
+            member_ids = {m.node_id for m in members}
 
-    # Cleanup
-    await node1.stop()
-    await node2.stop()
+            self.assertIn("node1", member_ids, f"Node1 not found in {node.node_id}'s membership")
+            self.assertIn("node2", member_ids, f"Node2 not found in {node.node_id}'s membership")
+            self.assertIn("node3", member_ids, f"Node3 not found in {node.node_id}'s membership")
 
-    # Verify both nodes discovered each other
-    assert len(membership1) >= 2  # At least self and node2
-    assert len(membership2) >= 2  # At least self and node1
+            # All members should be alive
+            alive = node.get_alive_members()
+            self.assertEqual(len(alive), 3, f"Expected 3 alive members in {node.node_id}")
 
-async def test_three_node_cluster():
-    """Test node discovery in a three-node cluster"""
-    # Create three nodes with seed configuration
-    node1 = SWIMGossipProvider("node1", "127.0.0.1", 9011)
-    node2 = SWIMGossipProvider("node2", "127.0.0.1", 9012, [("127.0.0.1", 9011)])
-    node3 = SWIMGossipProvider("node3", "127.0.0.1", 9013, [("127.0.0.1", 9011)])
+        # Clean up
+        node1.stop()
+        node2.stop()
+        node3.stop()
 
-    # Start all nodes
-    await node1.start()
-    await node2.start()
-    await node3.start()
+    def test_new_node_join(self):
+        """Test that new nodes can join the cluster."""
+        # Create initial cluster
+        node1 = NodeDiscovery("node1", "127.0.0.1", 8001)
+        node2 = NodeDiscovery("node2", "127.0.0.1", 8002, [("127.0.0.1", 8001)])
 
-    # Give them time to discover each other
-    await asyncio.sleep(3)
+        node1.start()
+        node2.start()
 
-    # Check membership
-    membership1 = node1.get_membership()
-    membership2 = node2.get_membership()
-    membership3 = node3.get_membership()
+        # Wait for initial discovery
+        time.sleep(2)
 
-    print(f"Node1 membership: {[n.id for n in membership1.values()]}")
-    print(f"Node2 membership: {[n.id for n in membership2.values()]}")
-    print(f"Node3 membership: {[n.id for n in membership3.values()]}")
+        # Create and add a new node
+        node3 = NodeDiscovery("node3", "127.0.0.1", 8003, [("127.0.0.1", 8001)])
+        node3.start()
 
-    # Cleanup
-    await node1.stop()
-    await node2.stop()
-    await node3.stop()
+        # Wait for new node to be discovered
+        time.sleep(2)
 
-    # Verify all nodes discovered each other
-    assert len(membership1) >= 3
-    assert len(membership2) >= 3
-    assert len(membership3) >= 3
+        # Verify all nodes know about the new node
+        for node in [node1, node2, node3]:
+            members = node.get_members()
+            member_ids = {m.node_id for m in members}
+            self.assertIn("node3", member_ids, f"Node3 not found in {node.node_id}'s membership")
+
+        # Clean up
+        node1.stop()
+        node2.stop()
+        node3.stop()
+
+    def test_membership_consistency(self):
+        """Test that membership lists are consistent across nodes."""
+        # Create 3 nodes
+        node1 = NodeDiscovery("node1", "127.0.0.1", 8001)
+        node2 = NodeDiscovery("node2", "127.0.0.1", 8002, [("127.0.0.1", 8001)])
+        node3 = NodeDiscovery("node3", "127.0.0.1", 8003, [("127.0.0.1", 8001)])
+
+        # Start all nodes
+        node1.start()
+        node2.start()
+        node3.start()
+
+        # Wait for gossip to propagate
+        time.sleep(3)
+
+        # Get membership lists from all nodes
+        members1 = {m.node_id for m in node1.get_members()}
+        members2 = {m.node_id for m in node2.get_members()}
+        members3 = {m.node_id for m in node3.get_members()}
+
+        # All membership lists should be identical
+        self.assertEqual(members1, members2)
+        self.assertEqual(members2, members3)
+        self.assertEqual(members1, members3)
+
+        # Clean up
+        node1.stop()
+        node2.stop()
+        node3.stop()
 
 if __name__ == "__main__":
-    asyncio.run(test_node_discovery_basic())
-    asyncio.run(test_three_node_cluster())
-    print("All tests passed!")
+    unittest.main()

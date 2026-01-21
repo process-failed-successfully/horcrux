@@ -1,165 +1,262 @@
 """
-Node Discovery Module for SWIM Gossip Protocol
-
-This module implements node discovery functionality for the SWIM gossip protocol,
-which is used for distributed node discovery and failure detection.
+Node Discovery implementation using SWIM protocol.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+import random
 import time
+import threading
+from typing import Dict, List, Set, Optional, Tuple
+from dataclasses import dataclass, field
+import json
+import socket
+import hashlib
 
 @dataclass
 class Node:
-    """
-    Represents a node in the SWIM cluster.
-    """
-    id: str
+    """Represents a node in the cluster."""
+    node_id: str
     address: str
     port: int
     status: str = "alive"
     last_seen: float = field(default_factory=time.time)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    incarnation: int = 0
 
-class SWIMNodeDiscovery:
+    def is_alive(self) -> bool:
+        """Check if node is considered alive."""
+        return self.status == "alive"
+
+    def to_dict(self) -> Dict:
+        """Convert node to dictionary for serialization."""
+        return {
+            "node_id": self.node_id,
+            "address": self.address,
+            "port": self.port,
+            "status": self.status,
+            "last_seen": self.last_seen,
+            "incarnation": self.incarnation
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'Node':
+        """Create node from dictionary."""
+        return cls(
+            node_id=data["node_id"],
+            address=data["address"],
+            port=data["port"],
+            status=data.get("status", "alive"),
+            last_seen=data.get("last_seen", time.time()),
+            incarnation=data.get("incarnation", 0)
+        )
+
+class NodeDiscovery:
     """
-    A class that handles node discovery in a SWIM gossip protocol cluster.
+    SWIM Node Discovery implementation.
 
-    The SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
-    is used for distributed node discovery and failure detection.
+    SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
+    is a gossip-based membership protocol that provides eventual consistency
+    for cluster membership.
     """
 
-    def __init__(self, node_id: str, address: str, port: int):
+    def __init__(self, node_id: str, address: str, port: int, seed_nodes: Optional[List[Tuple[str, int]]] = None):
         """
-        Initialize the SWIMNodeDiscovery.
+        Initialize node discovery.
 
         Args:
             node_id: Unique identifier for this node
             address: Network address of this node
             port: Network port of this node
+            seed_nodes: List of (address, port) tuples for initial cluster members
         """
         self.node_id = node_id
         self.address = address
         self.port = port
-        self.membership_list: Dict[str, Node] = {}
+        self.seed_nodes = seed_nodes or []
 
-        # Add self to membership list
-        self_node = Node(
-            id=self.node_id,
-            address=self.address,
-            port=self.port,
-            status="alive",
-            last_seen=time.time()
-        )
-        self.membership_list[self.node_id] = self_node
+        # Local node
+        self.local_node = Node(node_id, address, port)
 
-    def get_membership_list(self) -> List[Node]:
+        # Membership list
+        self.members: Dict[str, Node] = {}
+        self.members[node_id] = self.local_node
+
+        # Configuration
+        self.gossip_interval = 1.0  # seconds
+        self.ping_timeout = 0.5  # seconds
+        self.failure_threshold = 3  # missed pings before failure
+        self.probe_timeout = 1.0  # seconds
+
+        # State
+        self.running = False
+        self.gossip_thread: Optional[threading.Thread] = None
+        self.lock = threading.Lock()
+
+        # Initialize with seed nodes
+        for addr, port in self.seed_nodes:
+            node_id = self._generate_node_id(addr, port)
+            if node_id != self.node_id:
+                self.members[node_id] = Node(node_id, addr, port)
+
+    def _generate_node_id(self, address: str, port: int) -> str:
+        """Generate deterministic node ID from address and port."""
+        return hashlib.md5(f"{address}:{port}".encode()).hexdigest()
+
+    def start(self) -> None:
+        """Start the node discovery service."""
+        if self.running:
+            return
+
+        self.running = True
+        self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
+        self.gossip_thread.start()
+
+    def stop(self) -> None:
+        """Stop the node discovery service."""
+        self.running = False
+        if self.gossip_thread:
+            self.gossip_thread.join()
+
+    def _gossip_loop(self) -> None:
+        """Main gossip loop."""
+        while self.running:
+            try:
+                self._perform_gossip()
+                time.sleep(self.gossip_interval)
+            except Exception as e:
+                print(f"Gossip error: {e}")
+                time.sleep(1)
+
+    def _perform_gossip(self) -> None:
+        """Perform a gossip round."""
+        with self.lock:
+            if len(self.members) < 2:
+                return
+
+            # Select a random node to gossip with
+            nodes = list(self.members.values())
+            random.shuffle(nodes)
+
+            for node in nodes:
+                if node.node_id == self.node_id:
+                    continue
+
+                if not node.is_alive():
+                    continue
+
+                try:
+                    # Send ping and get membership update
+                    response = self._ping_node(node)
+                    if response:
+                        self._update_membership(response)
+                except Exception as e:
+                    print(f"Ping failed to {node.node_id}: {e}")
+                    self._handle_failure(node)
+
+    def _ping_node(self, node: Node) -> Optional[Dict]:
         """
-        Get the current membership list.
+        Ping a node and request membership update.
 
         Returns:
-            List of all nodes in the cluster
+            Membership update from the node, or None if ping failed
         """
-        return list(self.membership_list.values())
+        # Simulate network communication
+        # In a real implementation, this would use actual network calls
+        try:
+            # Simulate network delay
+            time.sleep(0.1)
 
-    def add_node(self, node: Node) -> None:
+            # Simulate 10% chance of failure for testing
+            if random.random() < 0.1:
+                return None
+
+            # Return a copy of our membership list
+            return {
+                "node_id": self.node_id,
+                "members": {k: v.to_dict() for k, v in self.members.items()}
+            }
+        except Exception as e:
+            print(f"Ping error: {e}")
+            return None
+
+    def _update_membership(self, update: Dict) -> None:
         """
-        Add a node to the membership list.
+        Update local membership based on gossip from another node.
 
         Args:
-            node: Node to add
+            update: Membership update from another node
         """
-        if node.id not in self.membership_list:
-            self.membership_list[node.id] = node
+        with self.lock:
+            sender_id = update["node_id"]
+            sender_members = update["members"]
 
-    def _add_node(self, node: Node) -> None:
+            # Update or add nodes from the sender's membership list
+            for node_data in sender_members.values():
+                node = Node.from_dict(node_data)
+
+                # Don't update ourselves
+                if node.node_id == self.node_id:
+                    continue
+
+                # Update existing node or add new one
+                if node.node_id in self.members:
+                    existing = self.members[node.node_id]
+
+                    # Handle incarnation numbers for failed nodes
+                    if node.incarnation > existing.incarnation:
+                        self.members[node.node_id] = node
+                    elif node.incarnation == existing.incarnation:
+                        # Update if the sender's info is newer
+                        if node.last_seen > existing.last_seen:
+                            self.members[node.node_id] = node
+                else:
+                    self.members[node.node_id] = node
+
+            # Mark sender as alive
+            if sender_id in self.members:
+                self.members[sender_id].status = "alive"
+                self.members[sender_id].last_seen = time.time()
+
+    def _handle_failure(self, node: Node) -> None:
         """
-        Internal method to add a node (used by gossip provider).
+        Handle node failure detection.
 
         Args:
-            node: Node to add
+            node: Node that is suspected to have failed
         """
-        self.membership_list[node.id] = node
+        with self.lock:
+            if node.node_id not in self.members:
+                return
 
-    def get_node(self, node_id: str) -> Optional[Node]:
-        """
-        Get a node by ID.
+            current_node = self.members[node.node_id]
 
-        Args:
-            node_id: ID of the node to retrieve
+            # Increment incarnation number for failed node
+            current_node.incarnation += 1
+            current_node.status = "failed"
+            current_node.last_seen = time.time()
 
-        Returns:
-            Node if found, None otherwise
-        """
-        return self.membership_list.get(node_id)
+            print(f"Node {node.node_id} marked as failed")
 
-    def _update_node(self, node: Node) -> None:
-        """
-        Internal method to update a node (used by gossip provider).
+    def get_members(self) -> List[Node]:
+        """Get current cluster members."""
+        with self.lock:
+            return list(self.members.values())
 
-        Args:
-            node: Node with updated information
-        """
-        if node.id in self.membership_list:
-            existing_node = self.membership_list[node.id]
-            # Update fields
-            existing_node.status = node.status
-            existing_node.last_seen = node.last_seen
-            existing_node.metadata = node.metadata
+    def get_alive_members(self) -> List[Node]:
+        """Get alive cluster members."""
+        with self.lock:
+            return [node for node in self.members.values() if node.is_alive()]
 
-    def get_alive_nodes(self) -> List[Node]:
-        """
-        Get the list of alive nodes.
+    def add_node(self, address: str, port: int) -> Node:
+        """Add a new node to the cluster."""
+        node_id = self._generate_node_id(address, port)
+        with self.lock:
+            if node_id not in self.members:
+                self.members[node_id] = Node(node_id, address, port)
+            return self.members[node_id]
 
-        Returns:
-            List of nodes with 'alive' status
-        """
-        return [node for node in self.membership_list.values() if node.status == "alive"]
-
-    def join_cluster(self, seed_address: str, seed_port: int) -> bool:
-        """
-        Join a cluster by connecting to a seed node.
-
-        Args:
-            seed_address: Address of the seed node
-            seed_port: Port of the seed node
-
-        Returns:
-            True if join was successful, False otherwise
-        """
-        # In a real implementation, this would connect to the seed node
-        # and exchange membership information
-        # For now, we'll simulate by adding a seed node
-        seed_node = Node(
-            id=f"{seed_address}:{seed_port}",
-            address=seed_address,
-            port=seed_port,
-            status="alive",
-            last_seen=time.time()
-        )
-        self.add_node(seed_node)
-        return True
-
-    def discover_nodes(self) -> List[Node]:
-        """
-        Discover nodes in the cluster.
-
-        Returns:
-            List of discovered nodes
-        """
-        return self.get_alive_nodes()
-
-    def batch_discover(self, input_data_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Discover multiple nodes in batch.
-
-        Args:
-            input_data_list: List of input data dictionaries
-
-        Returns:
-            List of output data with discovery status added
-        """
-        if not isinstance(input_data_list, list):
-            raise ValueError("Input data must be a list")
-
-        return [self.discover_nodes(data) for data in input_data_list]
+    def remove_node(self, node_id: str) -> bool:
+        """Remove a node from the cluster."""
+        with self.lock:
+            if node_id in self.members and node_id != self.node_id:
+                del self.members[node_id]
+                return True
+            return False
