@@ -37,7 +37,7 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 	result := big.NewInt(0)
 
 	// We want to evaluate the polynomial at x=0
-	x_eval := big.NewInt(0)
+	// The formula is: f(0) = sum(y_i * product((0 - x_j)/(x_i - x_j)) for j != i)
 
 	// Iterate through each share
 	for i := 0; i < threshold; i++ {
@@ -52,7 +52,7 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 
 			x_j := big.NewInt(int64(shares[j].X))
 
-			// numerator = (x_eval - x_j) = (0 - x_j) = -x_j
+			// numerator = (0 - x_j) = -x_j
 			numerator := new(big.Int).Neg(x_j)
 
 			// denominator = (x_i - x_j)
