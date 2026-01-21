@@ -39,6 +39,9 @@ class SWIMGossipProvider:
 
         Args:
             config: Optional configuration dictionary
+
+        Raises:
+            ValueError: If configuration is invalid
         """
         self.config = config or {}
         self._validate_config()
@@ -51,6 +54,9 @@ class SWIMGossipProvider:
         self.ping_timeout = self.config.get("ping_timeout", 0.5)
         self.probe_timeout = self.config.get("probe_timeout", 1.0)
 
+        # Validate configuration values
+        self._validate_config_values()
+
         # Node state
         self.nodes: Dict[str, Node] = {}
         self.lock = threading.Lock()
@@ -62,10 +68,38 @@ class SWIMGossipProvider:
 
     def _validate_config(self) -> None:
         """
-        Validate the configuration parameters.
+        Validate the configuration type.
+
+        Raises:
+            ValueError: If configuration is not a dictionary
         """
         if not isinstance(self.config, dict):
             raise ValueError("Configuration must be a dictionary")
+
+    def _validate_config_values(self) -> None:
+        """
+        Validate individual configuration values.
+
+        Raises:
+            ValueError: If any configuration value is invalid
+        """
+        if not isinstance(self.node_id, str) or not self.node_id:
+            raise ValueError("node_id must be a non-empty string")
+
+        if not isinstance(self.address, str) or not self.address:
+            raise ValueError("address must be a non-empty string")
+
+        if not isinstance(self.port, int) or not (0 < self.port < 65536):
+            raise ValueError("port must be an integer between 1 and 65535")
+
+        if not isinstance(self.gossip_interval, (int, float)) or self.gossip_interval <= 0:
+            raise ValueError("gossip_interval must be a positive number")
+
+        if not isinstance(self.ping_timeout, (int, float)) or self.ping_timeout <= 0:
+            raise ValueError("ping_timeout must be a positive number")
+
+        if not isinstance(self.probe_timeout, (int, float)) or self.probe_timeout <= 0:
+            raise ValueError("probe_timeout must be a positive number")
 
     def _add_node(self, node_id: str, address: str, port: int) -> None:
         """
@@ -161,6 +195,22 @@ class SWIMGossipProvider:
                 for node in self.nodes.values()
             ]
 
+    def get_config(self) -> Dict[str, Any]:
+        """
+        Get the current configuration.
+
+        Returns:
+            Dictionary containing the current configuration
+        """
+        return {
+            "node_id": self.node_id,
+            "address": self.address,
+            "port": self.port,
+            "gossip_interval": self.gossip_interval,
+            "ping_timeout": self.ping_timeout,
+            "probe_timeout": self.probe_timeout
+        }
+
 def main():
     """
     Main entry point for testing the SWIM Gossip provider.
@@ -181,6 +231,9 @@ def main():
     try:
         # Start the provider
         provider.start()
+
+        # Print configuration
+        print(f"Configuration: {json.dumps(provider.get_config(), indent=2)}")
 
         # Run for a few seconds
         time.sleep(3)
