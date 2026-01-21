@@ -29,6 +29,8 @@ type Config struct {
 	BindAddr       string
 	AdvertiseAddr  string
 	GossipInterval time.Duration
+	ProbeInterval  time.Duration
+	SuspicionMultiplier int
 	DiscoveryConfig
 }
 
@@ -48,6 +50,12 @@ type SWIM struct {
 func NewSWIM(config Config) *SWIM {
 	if config.GossipInterval == 0 {
 		config.GossipInterval = 1 * time.Second
+	}
+	if config.ProbeInterval == 0 {
+		config.ProbeInterval = 1 * time.Second
+	}
+	if config.SuspicionMultiplier == 0 {
+		config.SuspicionMultiplier = 3
 	}
 
 	return &SWIM{

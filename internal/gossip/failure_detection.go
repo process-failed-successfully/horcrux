@@ -21,8 +21,8 @@ func NewFailureDetector(swim *SWIM) *FailureDetector {
 	return &FailureDetector{
 		swim:           swim,
 		suspects:       make(map[string]time.Time),
-		failureTimeout: 3 * time.Second,
-		pingTimeout:    1 * time.Second,
+		failureTimeout: time.Duration(swim.config.SuspicionMultiplier) * swim.config.ProbeInterval,
+		pingTimeout:    swim.config.ProbeInterval,
 	}
 }
 
@@ -33,7 +33,7 @@ func (fd *FailureDetector) Start() {
 
 // monitorNodes periodically checks node health
 func (fd *FailureDetector) monitorNodes() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(fd.pingTimeout)
 	defer ticker.Stop()
 
 	for {

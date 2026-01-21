@@ -1,6 +1,7 @@
 package gossip
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
