@@ -7,80 +7,65 @@ import (
 )
 
 func TestFailureDetector(t *testing.T) {
-	t.Run("TestFailureDetectorInitialization", func(t *testing.T) {
-		config := Config{
-			NodeID:            "node1",
-			BindAddr:          ":8080",
-			SeedNodes:         []string{"localhost:8081"},
-			ProbeInterval:     1 * time.Second,
-			SuspicionMultiplier: 3,
-		}
-
-		swim := NewSWIM(context.Background())
-		swim.config = config
-
+	t.Run("TestFailureDetectorCreation", func(t *testing.T) {
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+		})
 		fd := NewFailureDetector(swim)
 
 		if fd == nil {
-			t.Fatal("FailureDetector instance is nil")
+			t.Fatal("Failed to create failure detector")
 		}
 	})
 
-	t.Run("TestFailureDetectorStartAndStop", func(t *testing.T) {
-		config := Config{
-			NodeID:            "node1",
-			BindAddr:          ":8080",
-			SeedNodes:         []string{"localhost:8081"},
-			ProbeInterval:     1 * time.Second,
-			SuspicionMultiplier: 3,
-		}
-
-		swim := NewSWIM(context.Background())
-		swim.config = config
-
+	t.Run("TestFailureDetectorStartStop", func(t *testing.T) {
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+			ProbeInterval: 100 * time.Millisecond,
+		})
 		fd := NewFailureDetector(swim)
+
 		fd.Start()
+		time.Sleep(200 * time.Millisecond)
+		fd.Stop()
 
-		// Let it run for a short time
-		time.Sleep(100 * time.Millisecond)
-
-		// Stop the failure detector
-		swim.Stop()
+		// Test passes if no panic occurs
 	})
 
-	t.Run("TestNodeFailureDetection", func(t *testing.T) {
-		config := Config{
-			NodeID:            "node1",
-			BindAddr:          ":8080",
-			SeedNodes:         []string{"localhost:8081"},
-			ProbeInterval:     1 * time.Second,
-			SuspicionMultiplier: 3,
-		}
+	t.Run("TestFailureDetectorWithMultipleNodes", func(t *testing.T) {
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+			ProbeInterval: 100 * time.Millisecond,
+		})
 
-		swim := NewSWIM(context.Background())
-		swim.config = config
-
-		// Add a node
-		node := &Node{
+		// Add some test nodes
+		swim.AddNode(&Node{
 			ID:    "node2",
-			Addr:  "localhost:8081",
+			Addr:  "127.0.0.1:8001",
 			State: NodeAlive,
-		}
-		swim.AddNode(node)
+		})
+
+		swim.AddNode(&Node{
+			ID:    "node3",
+			Addr:  "127.0.0.1:8002",
+			State: NodeAlive,
+		})
 
 		fd := NewFailureDetector(swim)
 		fd.Start()
+		time.Sleep(200 * time.Millisecond)
+		fd.Stop()
 
-		// Let it run for a short time
-		time.Sleep(100 * time.Millisecond)
-
-		// Check if the node is still alive
-		retrievedNode := swim.GetNode("node2")
-		if retrievedNode == nil {
-			t.Fatal("Node not found")
+		// Verify nodes are still there
+		nodes := swim.GetNodes()
+		if len(nodes) != 3 {
+			t.Errorf("Expected 3 nodes, got %d", len(nodes))
 		}
-
-		// Stop the failure detector
-		swim.Stop()
 	})
 }

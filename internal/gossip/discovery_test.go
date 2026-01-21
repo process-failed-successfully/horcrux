@@ -14,7 +14,11 @@ func TestDiscoveryService(t *testing.T) {
 			Interval:  1 * time.Second,
 		}
 
-		swim := NewSWIM(context.Background())
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+		})
 		_ = NewDiscoveryService(swim, config)
 
 		// Test passes if no panic occurs
@@ -27,7 +31,11 @@ func TestDiscoveryService(t *testing.T) {
 			Interval:  1 * time.Second,
 		}
 
-		swim := NewSWIM(context.Background())
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+		})
 		_ = NewDiscoveryService(swim, config)
 
 		// Test passes if no panic occurs
@@ -40,13 +48,19 @@ func TestDiscoveryService(t *testing.T) {
 			Interval:  1 * time.Second,
 		}
 
-		swim := NewSWIM(context.Background())
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+		})
 		d := NewDiscoveryService(swim, config)
 
 		err := d.Start()
 		if err != nil {
 			t.Fatalf("Failed to start discovery: %v", err)
 		}
+
+		time.Sleep(100 * time.Millisecond)
 
 		err = d.Stop()
 		if err != nil {
@@ -61,7 +75,11 @@ func TestDiscoveryService(t *testing.T) {
 			Interval:  1 * time.Second,
 		}
 
-		swim := NewSWIM(context.Background())
+		swim := NewSWIM(context.Background(), Config{
+			NodeID:        "test-node",
+			BindAddr:      "127.0.0.1:8000",
+			AdvertiseAddr: "127.0.0.1:8000",
+		})
 		_ = NewDiscoveryService(swim, config)
 
 		if len(config.SeedNodes) != 3 {

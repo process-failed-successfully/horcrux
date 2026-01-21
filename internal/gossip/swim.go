@@ -22,14 +22,11 @@ type Node struct {
 	State NodeState
 }
 
-// DiscoveryConfig holds configuration for the discovery service
+// DiscoveryConfig represents the configuration for node discovery
 type DiscoveryConfig struct {
-	SeedNodes    []string
-	BindAddr     string
-	Interval     time.Duration
-	Port         int
-	Timeout      time.Duration
-	MaxRetries   int
+	SeedNodes []string
+	BindAddr  string
+	Interval  time.Duration
 }
 
 // Config represents the configuration for SWIM
@@ -54,19 +51,24 @@ type SWIM struct {
 	done   chan struct{}
 }
 
-// NewSWIM creates a new SWIM instance
-func NewSWIM(config Config) *SWIM {
-	if config.ProbeInterval == 0 {
-		config.ProbeInterval = 1 * time.Second
+// NewSWIM creates a new SWIM instance with the given configuration
+func NewSWIM(ctx context.Context, config Config) *SWIM {
+	if ctx == nil {
+		ctx = context.Background()
 	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	// Set default values if not provided
 	if config.GossipInterval == 0 {
 		config.GossipInterval = 1 * time.Second
+	}
+	if config.ProbeInterval == 0 {
+		config.ProbeInterval = 1 * time.Second
 	}
 	if config.SuspicionMultiplier == 0 {
 		config.SuspicionMultiplier = 3
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
 
 	swim := &SWIM{
 		ctx:    ctx,
@@ -77,12 +79,11 @@ func NewSWIM(config Config) *SWIM {
 	}
 
 	// Add self node
-	selfNode := &Node{
+	swim.AddNode(&Node{
 		ID:    config.NodeID,
 		Addr:  config.AdvertiseAddr,
 		State: NodeAlive,
-	}
-	swim.AddNode(selfNode)
+	})
 
 	return swim
 }
@@ -91,14 +92,21 @@ func NewSWIM(config Config) *SWIM {
 func (s *SWIM) Start() error {
 	// Start failure detector
 	fd := NewFailureDetector(s)
-	fd.Start()
+	go fd.Start()
+
+	// Start discovery service if configured
+	if len(s.config.SeedNodes) > 0 || s.config.DiscoveryConfig.BindAddr != "" {
+		ds := NewDiscoveryService(s, s.config.DiscoveryConfig)
+		go ds.Start()
+	}
+
 	return nil
 }
 
 // Stop stops the SWIM protocol
 func (s *SWIM) Stop() error {
 	s.cancel()
-	close(s.done)
+	<-s.done
 	return nil
 }
 

@@ -1,21 +1,22 @@
 package gossip
 
 import (
+	"context"
 	"testing"
 	"time"
 )
 
 func TestNewSWIM(t *testing.T) {
 	config := Config{
-		NodeID:      "node1",
-		BindAddr:    "127.0.0.1:8000",
+		NodeID:        "node1",
+		BindAddr:      "127.0.0.1:8000",
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
 		},
 	}
 
-	swim := NewSWIM(config)
+	swim := NewSWIM(context.Background(), config)
 	nodes := swim.GetNodes()
 
 	if len(nodes) != 1 {
@@ -29,15 +30,15 @@ func TestNewSWIM(t *testing.T) {
 
 func TestSWIMStartStop(t *testing.T) {
 	config := Config{
-		NodeID:      "node1",
-		BindAddr:    "127.0.0.1:8000",
+		NodeID:        "node1",
+		BindAddr:      "127.0.0.1:8000",
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
 		},
 	}
 
-	swim := NewSWIM(config)
+	swim := NewSWIM(context.Background(), config)
 	if err := swim.Start(); err != nil {
 		t.Fatalf("Failed to start SWIM: %v", err)
 	}
@@ -52,15 +53,15 @@ func TestSWIMStartStop(t *testing.T) {
 
 func TestSWIMConfigDefaults(t *testing.T) {
 	config := Config{
-		NodeID:      "node1",
-		BindAddr:    "127.0.0.1:8000",
+		NodeID:        "node1",
+		BindAddr:      "127.0.0.1:8000",
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
 		},
 	}
 
-	swim := NewSWIM(config)
+	swim := NewSWIM(context.Background(), config)
 
 	if swim.config.GossipInterval != 1*time.Second {
 		t.Errorf("Expected default GossipInterval 1s, got %v", swim.config.GossipInterval)
