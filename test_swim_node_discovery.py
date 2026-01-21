@@ -3,40 +3,51 @@ Unit tests for the NodeDiscovery module.
 """
 
 import unittest
-from internal.swim.node_discovery import NodeDiscovery
+from internal.swim.node_discovery import SWIMNodeDiscovery, Node
 
 class TestNodeDiscovery(unittest.TestCase):
     """
-    Test cases for the NodeDiscovery class.
+    Test cases for the SWIMNodeDiscovery class.
     """
 
     def setUp(self):
         """
         Set up the test environment.
         """
-        self.discovery = NodeDiscovery()
+        self.discovery = SWIMNodeDiscovery("test-node", "127.0.0.1", 8000)
 
-    def test_discover_nodes(self):
+    def test_initialization(self):
         """
-        Test the discover_nodes method.
+        Test that SWIMNodeDiscovery initializes correctly.
         """
-        input_data = {'name': 'test', 'value': 123}
-        expected_output = {'name': 'test', 'value': 123, 'discovered': True}
-        self.assertEqual(self.discovery.discover_nodes(input_data), expected_output)
+        self.assertEqual(self.discovery.node_id, "test-node")
+        self.assertEqual(self.discovery.address, "127.0.0.1")
+        self.assertEqual(self.discovery.port, 8000)
+        self.assertEqual(len(self.discovery.get_membership_list()), 1)  # Should have itself
 
-    def test_batch_discover(self):
+    def test_add_node(self):
         """
-        Test the batch_discover method.
+        Test adding a node to the membership list.
         """
-        input_data_list = [
-            {'name': 'test1', 'value': 1},
-            {'name': 'test2', 'value': 2}
-        ]
-        expected_output_list = [
-            {'name': 'test1', 'value': 1, 'discovered': True},
-            {'name': 'test2', 'value': 2, 'discovered': True}
-        ]
-        self.assertEqual(self.discovery.batch_discover(input_data_list), expected_output_list)
+        new_node = Node("node2", "127.0.0.1", 8001)
+        self.discovery.add_node(new_node)
+        self.assertEqual(len(self.discovery.get_membership_list()), 2)
+
+    def test_get_alive_nodes(self):
+        """
+        Test getting alive nodes.
+        """
+        alive_nodes = self.discovery.get_alive_nodes()
+        self.assertEqual(len(alive_nodes), 1)
+        self.assertEqual(alive_nodes[0].node_id, "test-node")
+
+    def test_join_cluster(self):
+        """
+        Test joining a cluster.
+        """
+        result = self.discovery.join_cluster("127.0.0.1", 8001)
+        self.assertTrue(result)
+        self.assertEqual(len(self.discovery.get_membership_list()), 2)
 
 if __name__ == '__main__':
     unittest.main()
