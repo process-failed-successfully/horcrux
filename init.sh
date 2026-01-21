@@ -1,28 +1,24 @@
 #!/bin/bash
 
-# Initialize the development environment for horcrux-swim-gossip
-
-echo "Setting up the development environment for horcrux-swim-gossip..."
-
-# Install Go if not present
-if ! command -v go &> /dev/null; then
-    echo "Go not found. Installing Go..."
-    apt-get update && apt-get install -y golang-go
-fi
+# Initialize the development environment for the Horcrux SWIM Gossip Provider
 
 # Install dependencies
+echo "Installing dependencies..."
+sudo apt-get update
+sudo apt-get install -y git make
+
+# Clone the Horcrux repository
+echo "Cloning the Horcrux repository..."
+git clone https://github.com/process-failed-successfully/horcrux.git
+
+# Navigate to the Horcrux directory
+cd horcrux
+
+# Install Go dependencies
 echo "Installing Go dependencies..."
 go mod download
-go mod tidy
 
 # Print helpful information
-echo ""
 echo "Development environment setup complete."
-echo "To run the project:"
-echo "  1. Run 'go build' to build the project."
-echo "  2. Run the binary to start the application."
-echo ""
-echo "To run tests:"
-echo "  go test ./internal/gossip/..."
-echo ""
-echo "For more information, refer to the README.md file."
+echo "To start the Horcrux project, run:"
+echo "  make run"
