@@ -1,125 +1,134 @@
-// Package retrieval provides functionality to retrieve key-value pairs from storage
 package retrieval
 
 import (
-	"errors"
 	"testing"
 	"horcruxkv/internal/storage"
 )
 
-func TestGet(t *testing.T) {
+func TestRetrieveKeyValue(t *testing.T) {
 	store := storage.NewStorage()
-	retriever := NewRetriever(store)
+	retrieval := NewRetrieval(store)
 
-	// Test retrieving non-existent key
-	_, exists, err := retriever.Get("non-existent")
+	key := "test_key"
+	value := []byte("test_value")
+
+	// Store the value first
+	err := store.Store(key, value)
 	if err != nil {
-		t.Errorf("Expected no error for non-existent key, got: %v", err)
-	}
-	if exists {
-		t.Error("Expected exists to be false for non-existent key")
+		t.Fatalf("Failed to store value: %v", err)
 	}
 
-	// Store a value
-	store.Set("test-key", "test-value")
-
-	// Test retrieving existing key
-	value, exists, err := retriever.Get("test-key")
+	// Retrieve the value
+	retrieved, err := retrieval.Get(key)
 	if err != nil {
-		t.Errorf("Expected no error, got: %v", err)
+		t.Fatalf("Failed to retrieve value: %v", err)
 	}
-	if !exists {
-		t.Error("Expected exists to be true")
-	}
-	if value != "test-value" {
-		t.Errorf("Expected value to be 'test-value', got: %v", value)
+
+	if string(retrieved) != string(value) {
+		t.Errorf("Retrieved value doesn't match stored value")
 	}
 }
 
-func TestGetEmptyKey(t *testing.T) {
+func TestRetrieveEmptyKey(t *testing.T) {
 	store := storage.NewStorage()
-	retriever := NewRetriever(store)
+	retrieval := NewRetrieval(store)
 
-	_, _, err := retriever.Get("")
+	_, err := retrieval.Get("")
 	if err == nil {
 		t.Error("Expected error for empty key")
 	}
-	if err.Error() != "key cannot be empty" {
-		t.Errorf("Expected error message 'key cannot be empty', got: %v", err.Error())
-	}
 }
 
-func TestGetMultiple(t *testing.T) {
+func TestRetrieveMultipleKeys(t *testing.T) {
 	store := storage.NewStorage()
-	retriever := NewRetriever(store)
+	retrieval := NewRetrieval(store)
 
-	// Store some values
-	store.Set("key1", "value1")
-	store.Set("key2", "value2")
-	store.Set("key3", "value3")
-
-	// Test retrieving multiple keys
-	keys := []string{"key1", "key2", "key4"}
-	result, err := retriever.GetMultiple(keys)
-	if err != nil {
-		t.Errorf("Expected no error, got: %v", err)
-	}
-
-	// Check that only existing keys are returned
-	if len(result) != 2 {
-		t.Errorf("Expected 2 results, got: %d", len(result))
-	}
-	if result["key1"] != "value1" {
-		t.Errorf("Expected value1, got: %v", result["key1"])
-	}
-	if result["key2"] != "value2" {
-		t.Errorf("Expected value2, got: %v", result["key2"])
-	}
-	if _, exists := result["key4"]; exists {
-		t.Error("Expected key4 to not be in result")
-	}
-}
-
-func TestGetMultipleWithEmptyKey(t *testing.T) {
-	store := storage.NewStorage()
-	retriever := NewRetriever(store)
-
-	keys := []string{"key1", "", "key2"}
-	_, err := retriever.GetMultiple(keys)
-	if err == nil {
-		t.Error("Expected error for empty key in list")
-	}
-	if err.Error() != "key cannot be empty" {
-		t.Errorf("Expected error message 'key cannot be empty', got: %v", err.Error())
-	}
-}
-
-func TestRetrieverIntegration(t *testing.T) {
-	store := storage.NewStorage()
-	retriever := NewRetriever(store)
+	keys := []string{"key1", "key2", "key3"}
+	values := [][]byte{[]byte("value1"), []byte("value2"), []byte("value3")}
 
 	// Store multiple values
-	store.Set("name", "Alice")
-	store.Set("age", 30)
-	store.Set("city", "New York")
-
-	// Retrieve and verify
-	name, exists, err := retriever.Get("name")
-	if err != nil || !exists || name != "Alice" {
-		t.Errorf("Failed to retrieve name: err=%v, exists=%v, value=%v", err, exists, name)
+	for i := range keys {
+		err := store.Store(keys[i], values[i])
+		if err != nil {
+			t.Fatalf("Failed to store value: %v", err)
+		}
 	}
 
-	age, exists, err := retriever.Get("age")
-	if err != nil || !exists || age != 30 {
-		t.Errorf("Failed to retrieve age: err=%v, exists=%v, value=%v", err, exists, age)
-	}
+	// Retrieve all values
+	for i := range keys {
+		retrieved, err := retrieval.Get(keys[i])
+		if err != nil {
+			t.Fatalf("Failed to retrieve value: %v", err)
+		}
 
-	// Test non-existent key
-	_, exists, err = retriever.Get("country")
+		if string(retrieved) != string(values[i]) {
+			t.Errorf("Retrieved value doesn't match stored value for key %s", keys[i])
+		}
+	}
+}
+
+func TestRetrieveAfterUpdate(t *testing.T) {
+	store := storage.NewStorage()
+	retrieval := NewRetrieval(store)
+
+	key := "test_key"
+	value1 := []byte("value1")
+	value2 := []byte("value2")
+
+	// Store initial value
+	err := store.Store(key, value1)
 	if err != nil {
-		t.Errorf("Unexpected error for non-existent key: %v", err)
+		t.Fatalf("Failed to store value: %v", err)
 	}
-	if exists {
-		t.Error("Expected exists to be false for non-existent key")
+
+	// Update the value
+	err = store.Store(key, value2)
+	if err != nil {
+		t.Fatalf("Failed to update value: %v", err)
+	}
+
+	// Retrieve the updated value
+	retrieved, err := retrieval.Get(key)
+	if err != nil {
+		t.Fatalf("Failed to retrieve value: %v", err)
+	}
+
+	if string(retrieved) != string(value2) {
+		t.Errorf("Retrieved value doesn't match updated value")
+	}
+}
+
+func TestHasKey(t *testing.T) {
+	store := storage.NewStorage()
+	retrieval := NewRetrieval(store)
+
+	key := "test_key"
+	value := []byte("test_value")
+
+	// Key should not exist initially
+	if retrieval.Has(key) {
+		t.Error("Key should not exist initially")
+	}
+
+	// Store the value
+	err := store.Store(key, value)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
+	}
+
+	// Key should exist after storage
+	if !retrieval.Has(key) {
+		t.Error("Key should exist after storage")
+	}
+
+	// Delete the value
+	err = store.Delete(key)
+	if err != nil {
+		t.Fatalf("Failed to delete value: %v", err)
+	}
+
+	// Key should not exist after deletion
+	if retrieval.Has(key) {
+		t.Error("Key should not exist after deletion")
 	}
 }

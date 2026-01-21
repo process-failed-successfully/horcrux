@@ -1,4 +1,3 @@
-// Package retrieval provides functionality to retrieve key-value pairs from storage
 package retrieval
 
 import (
@@ -6,45 +5,37 @@ import (
 	"horcruxkv/internal/storage"
 )
 
-// Retriever handles retrieval operations from storage
-type Retriever struct {
+// Retrieval wraps a storage instance to provide retrieval functionality
+type Retrieval struct {
 	store *storage.Storage
 }
 
-// NewRetriever creates a new Retriever instance
-func NewRetriever(store *storage.Storage) *Retriever {
-	return &Retriever{
+// NewRetrieval creates a new Retrieval instance
+func NewRetrieval(store *storage.Storage) *Retrieval {
+	return &Retrieval{
 		store: store,
 	}
 }
 
-// Get retrieves a value by key from storage
-// Returns the value and a boolean indicating if the key exists
-// Returns an error if the key is empty
-func (r *Retriever) Get(key string) (interface{}, bool, error) {
+// Get retrieves a value by key
+func (r *Retrieval) Get(key string) ([]byte, error) {
 	if key == "" {
-		return nil, false, errors.New("key cannot be empty")
+		return nil, errors.New("key cannot be empty")
 	}
 
-	value, exists := r.store.Get(key)
-	return value, exists, nil
+	value, err := r.store.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	return value, nil
 }
 
-// GetMultiple retrieves multiple values by keys from storage
-// Returns a map of key-value pairs for existing keys
-// Returns an error if any key is empty
-func (r *Retriever) GetMultiple(keys []string) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
-
-	for _, key := range keys {
-		if key == "" {
-			return nil, errors.New("key cannot be empty")
-		}
-
-		if value, exists := r.store.Get(key); exists {
-			result[key] = value
-		}
+// Has checks if a key exists
+func (r *Retrieval) Has(key string) bool {
+	if key == "" {
+		return false
 	}
 
-	return result, nil
+	return r.store.Has(key)
 }
