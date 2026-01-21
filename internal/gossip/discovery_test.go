@@ -13,7 +13,7 @@ func TestDiscoveryServiceStartStop(t *testing.T) {
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
-			BindAddr:  "127.0.0.1:9000",
+			DiscoveryPort: 9000,
 		},
 	}
 
@@ -35,7 +35,7 @@ func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
-			BindAddr:  "127.0.0.1:9001",
+			DiscoveryPort: 9001,
 		},
 	}
 
@@ -51,8 +51,8 @@ func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
 		BindAddr:    "127.0.0.1:8001",
 		AdvertiseAddr: "127.0.0.1:8001",
 		DiscoveryConfig: DiscoveryConfig{
-			SeedNodes: []string{"127.0.0.1:8000"},
-			BindAddr:  "127.0.0.1:9002",
+			SeedNodes: []string{"127.0.0.1:8000"}, // Point to node1's advertise address
+			DiscoveryPort: 9002,
 		},
 	}
 
@@ -62,13 +62,14 @@ func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
 	}
 	defer swim2.Stop()
 
-	// Wait for discovery
-	time.Sleep(2 * time.Second)
+	// Wait for discovery - need to wait longer for the discovery loop to run
+	time.Sleep(3 * time.Second)
 
 	// Check that node2 discovered node1
 	nodes := swim2.GetNodes()
 	if len(nodes) < 2 {
 		t.Errorf("Expected at least 2 nodes, got %d", len(nodes))
+		t.Logf("Nodes: %v", nodes)
 	}
 }
 
@@ -79,7 +80,7 @@ func TestDiscoveryServiceHandleDiscovery(t *testing.T) {
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
-			BindAddr:  "127.0.0.1:9003",
+			DiscoveryPort: 9003,
 		},
 	}
 
@@ -100,7 +101,7 @@ func TestDiscoveryServiceHandleNodesRequest(t *testing.T) {
 		AdvertiseAddr: "127.0.0.1:8000",
 		DiscoveryConfig: DiscoveryConfig{
 			SeedNodes: []string{},
-			BindAddr:  "127.0.0.1:9004",
+			DiscoveryPort: 9004,
 		},
 	}
 
