@@ -13,10 +13,6 @@ const (
 	logFileName = "log.jsonl"
 )
 
-var (
-	logDir = getLogDir()
-)
-
 func getLogDir() string {
 	// Allow override via environment variable for testing
 	if envDir := os.Getenv("LOG_DIR"); envDir != "" {
@@ -32,6 +28,7 @@ type LogEntry struct {
 }
 
 func ensureLogDir() error {
+	logDir := getLogDir()
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
 		return os.MkdirAll(logDir, 0755)
 	}
@@ -39,7 +36,7 @@ func ensureLogDir() error {
 }
 
 func getLogFilePath() string {
-	return filepath.Join(logDir, logFileName)
+	return filepath.Join(getLogDir(), logFileName)
 }
 
 func appendLogEntry(data interface{}) error {
