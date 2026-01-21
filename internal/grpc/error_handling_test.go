@@ -17,8 +17,20 @@ func TestEchoErrorHandling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	lis := bufconn.Listen(1024 * 1024)
+	s := grpc.NewServer()
+	RegisterInternalServiceServer(s, &internalServiceServer{})
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			t.Errorf("Server failed: %v", err)
+		}
+	}()
+	defer s.Stop()
+
 	conn, err := grpc.DialContext(ctx, "bufnet",
-		grpc.WithContextDialer(bufDialer),
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return lis.Dial()
+		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
