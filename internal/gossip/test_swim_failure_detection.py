@@ -1,91 +1,101 @@
 #!/usr/bin/env python3
 """
-Test SWIM Gossip Failure Detection
-
-This module tests the SWIM Gossip provider failure detection functionality.
+Unit tests for SWIM Gossip failure detection.
 """
 
 import unittest
 import time
 import threading
-from internal.gossip.swim_provider import SWIMGossipProvider, Node
+from internal.gossip.swim_provider import SWIMGossipProvider
 
-class TestSWIMGossipFailureDetection(unittest.TestCase):
-    """Test cases for SWIM Gossip Provider Failure Detection."""
+class TestFailureDetection(unittest.TestCase):
+    """
+    Test cases for SWIM Gossip failure detection.
+    """
 
     def test_failure_detection_basic(self):
-        """Test that nodes can detect failures of other nodes."""
-        # Create two providers
-        provider1 = SWIMGossipProvider({"node_id": "node1", "gossip_interval": 0.1})
-        provider2 = SWIMGossipProvider({"node_id": "node2", "gossip_interval": 0.1})
+        """
+        Test basic failure detection mechanism.
+        """
+        # Create a provider
+        provider = SWIMGossipProvider(
+            node_id="test_node",
+            address="127.0.0.1",
+            port=9999
+        )
 
-        # Start both providers
-        provider1.start()
-        provider2.start()
+        # Add a node that doesn't exist (will fail to ping)
+        provider.add_node("dead_node", "192.168.1.1", 9998)
 
-        # Add node2 to provider1's node list
-        provider1.add_node("node2", "127.0.0.1", 8081)
+        # Verify node is initially alive
+        nodes = provider.get_nodes()
+        dead_node = [n for n in nodes if n.node_id == "dead_node"][0]
+        self.assertEqual(dead_node.status, "alive")
 
-        # Verify node2 is in provider1's node list
-        self.assertIn("node2", provider1.nodes)
-        self.assertEqual(provider1.nodes["node2"].status, "alive")
+        # Start the provider
+        provider.start()
 
-        # Simulate failure by marking node2 as failed
-        provider1.mark_node_failed("node2")
+        # Wait for failure detection to kick in
+        time.sleep(3)
 
-        # Verify node2 is marked as failed
-        self.assertEqual(provider1.nodes["node2"].status, "failed")
+        # Check if node is marked as failed
+        nodes = provider.get_nodes()
+        dead_node = [n for n in nodes if n.node_id == "dead_node"][0]
+        self.assertEqual(dead_node.status, "failed")
 
-        # Clean up
-        provider1.stop()
-        provider2.stop()
+        # Stop the provider
+        provider.stop()
 
-    def test_failure_detection_with_timeout(self):
-        """Test that nodes are marked as failed after ping timeout."""
-        provider = SWIMGossipProvider({"node_id": "test_node", "ping_timeout": 0.1})
+    def test_failure_threshold(self):
+        """
+        Test that failure threshold is respected.
+        """
+        provider = SWIMGossipProvider(
+            node_id="test_node",
+            address="127.0.0.1",
+            port=9997
+        )
 
         # Add a node
-        provider.add_node("unresponsive_node", "192.168.1.100", 8080)
+        provider.add_node("test_node2", "192.168.1.1", 9996)
 
-        # Mark the node as failed due to timeout
-        provider.mark_node_failed("unresponsive_node")
+        # Start the provider
+        provider.start()
 
-        # Verify the node is marked as failed
-        self.assertEqual(provider.nodes["unresponsive_node"].status, "failed")
+        # Wait for some failures but not enough to trigger failure detection
+        time.sleep(2)
 
-    def test_node_removal_after_failure(self):
-        """Test that failed nodes can be removed from the node list."""
-        provider = SWIMGossipProvider({"node_id": "test_node"})
+        # Check that node is still alive
+        nodes = provider.get_nodes()
+        test_node = [n for n in nodes if n.node_id == "test_node2"][0]
+        self.assertEqual(test_node.status, "alive")
 
-        # Add a node
-        provider.add_node("failed_node", "127.0.0.1", 8080)
+        # Stop the provider
+        provider.stop()
 
-        # Mark as failed
-        provider.mark_node_failed("failed_node")
+    def test_self_node_always_alive(self):
+        """
+        Test that the node itself is always marked as alive.
+        """
+        provider = SWIMGossipProvider(
+            node_id="self_node",
+            address="127.0.0.1",
+            port=9995
+        )
 
-        # Remove the failed node
-        provider.remove_node("failed_node")
+        # Start the provider
+        provider.start()
 
-        # Verify the node is removed
-        self.assertNotIn("failed_node", provider.nodes)
+        # Wait for some time
+        time.sleep(2)
 
-    def test_multiple_node_failures(self):
-        """Test handling of multiple node failures."""
-        provider = SWIMGossipProvider({"node_id": "test_node"})
+        # Check that self node is always alive
+        nodes = provider.get_nodes()
+        self_node = [n for n in nodes if n.node_id == "self_node"][0]
+        self.assertEqual(self_node.status, "alive")
 
-        # Add multiple nodes
-        provider.add_node("node1", "127.0.0.1", 8081)
-        provider.add_node("node2", "127.0.0.1", 8082)
-        provider.add_node("node3", "127.0.0.1", 8083)
-
-        # Mark some as failed
-        provider.mark_node_failed("node1")
-        provider.mark_node_failed("node3")
-
-        # Verify statuses
-        self.assertEqual(provider.nodes["node1"].status, "failed")
-        self.assertEqual(provider.nodes["node2"].status, "alive")
-        self.assertEqual(provider.nodes["node3"].status, "failed")
+        # Stop the provider
+        provider.stop()
 
 if __name__ == "__main__":
     unittest.main()
