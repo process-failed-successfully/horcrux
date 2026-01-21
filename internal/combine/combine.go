@@ -28,17 +28,32 @@ func modInverse(a *big.Int) *big.Int {
 // modDiv performs modular division: (a / b) mod prime
 func modDiv(a, b *big.Int) *big.Int {
 	invB := modInverse(b)
-	return new(big.Int).Mul(a, invB)
+	result := new(big.Int).Mul(a, invB)
+	return result.Mod(result, prime)
 }
 
 // modMul performs modular multiplication: (a * b) mod prime
 func modMul(a, b *big.Int) *big.Int {
-	return new(big.Int).Mul(a, b)
+	result := new(big.Int).Mul(a, b)
+	return result.Mod(result, prime)
 }
 
 // modAdd performs modular addition: (a + b) mod prime
 func modAdd(a, b *big.Int) *big.Int {
-	return new(big.Int).Add(a, b)
+	result := new(big.Int).Add(a, b)
+	return result.Mod(result, prime)
+}
+
+// modSub performs modular subtraction: (a - b) mod prime
+func modSub(a, b *big.Int) *big.Int {
+	result := new(big.Int).Sub(a, b)
+	return result.Mod(result, prime)
+}
+
+// modNeg performs modular negation: (-a) mod prime
+func modNeg(a *big.Int) *big.Int {
+	result := new(big.Int).Neg(a)
+	return result.Mod(result, prime)
 }
 
 // CombineShares reconstructs the secret from a subset of shares
@@ -89,12 +104,12 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 
 			x_j := big.NewInt(int64(shares[j].X))
 
-			// numerator = (0 - x_j) = -x_j
-			numerator := new(big.Int).Neg(x_j)
+			// numerator = (0 - x_j) = -x_j mod prime
+			numerator := modNeg(x_j)
 			numeratorProduct = modMul(numeratorProduct, numerator)
 
-			// denominator = (x_i - x_j)
-			denominator := new(big.Int).Sub(x_i, x_j)
+			// denominator = (x_i - x_j) mod prime
+			denominator := modSub(x_i, x_j)
 			denominatorProduct = modMul(denominatorProduct, denominator)
 		}
 
