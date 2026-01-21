@@ -22,13 +22,26 @@ type Node struct {
 	State NodeState
 }
 
+// DiscoveryConfig holds configuration for the discovery service
+type DiscoveryConfig struct {
+	SeedNodes    []string
+	BindAddr     string
+	Interval     time.Duration
+	Port         int
+	Timeout      time.Duration
+	MaxRetries   int
+}
+
 // Config represents the configuration for SWIM
 type Config struct {
 	NodeID            string
 	BindAddr          string
+	AdvertiseAddr     string
 	SeedNodes         []string
 	ProbeInterval     time.Duration
 	SuspicionMultiplier int
+	GossipInterval    time.Duration
+	DiscoveryConfig   DiscoveryConfig
 }
 
 // SWIM represents the SWIM gossip protocol implementation
@@ -42,32 +55,51 @@ type SWIM struct {
 }
 
 // NewSWIM creates a new SWIM instance
-func NewSWIM(ctx context.Context) *SWIM {
-	if ctx == nil {
-		ctx = context.Background()
+func NewSWIM(config Config) *SWIM {
+	if config.ProbeInterval == 0 {
+		config.ProbeInterval = 1 * time.Second
+	}
+	if config.GossipInterval == 0 {
+		config.GossipInterval = 1 * time.Second
+	}
+	if config.SuspicionMultiplier == 0 {
+		config.SuspicionMultiplier = 3
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	return &SWIM{
+	swim := &SWIM{
 		ctx:    ctx,
 		cancel: cancel,
 		nodes:  make(map[string]*Node),
+		config: config,
 		done:   make(chan struct{}),
 	}
+
+	// Add self node
+	selfNode := &Node{
+		ID:    config.NodeID,
+		Addr:  config.AdvertiseAddr,
+		State: NodeAlive,
+	}
+	swim.AddNode(selfNode)
+
+	return swim
 }
 
 // Start starts the SWIM protocol
-func (s *SWIM) Start() {
+func (s *SWIM) Start() error {
 	// Start failure detector
 	fd := NewFailureDetector(s)
 	fd.Start()
+	return nil
 }
 
 // Stop stops the SWIM protocol
-func (s *SWIM) Stop() {
+func (s *SWIM) Stop() error {
 	s.cancel()
 	close(s.done)
+	return nil
 }
 
 // GetNodes returns all nodes
