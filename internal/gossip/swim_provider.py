@@ -43,8 +43,11 @@ class SWIMGossipProvider:
         Raises:
             ValueError: If configuration is invalid
         """
+        # Validate config type first
+        if config is not None and not isinstance(config, dict):
+            raise ValueError("Configuration must be a dictionary or None")
+
         self.config = config or {}
-        self._validate_config()
 
         # Default configuration
         self.node_id = self.config.get("node_id", f"node_{random.randint(1000, 9999)}")
@@ -65,16 +68,6 @@ class SWIMGossipProvider:
 
         # Initialize with self
         self._add_node(self.node_id, self.address, self.port)
-
-    def _validate_config(self) -> None:
-        """
-        Validate the configuration type.
-
-        Raises:
-            ValueError: If configuration is not a dictionary
-        """
-        if not isinstance(self.config, dict):
-            raise ValueError("Configuration must be a dictionary")
 
     def _validate_config_values(self) -> None:
         """
