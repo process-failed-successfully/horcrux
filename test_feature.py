@@ -1,14 +1,20 @@
-# Unit tests for the feature implementation
+"""
+Unit tests for the feature implementation
+"""
+
 import unittest
-from feature_implementation import implement_feature
+from feature_implementation import implement_feature, verify_feature
 
 class TestFeatureImplementation(unittest.TestCase):
-    def test_feature_implementation(self):
-        """
-        Test the feature implementation
-        """
-        # Test logic here
-        self.assertTrue(True)
+    def test_implement_feature(self):
+        """Test that the feature implementation works"""
+        result = implement_feature()
+        self.assertTrue(result)
 
-if __name__ == "__main__":
+    def test_verify_feature(self):
+        """Test that the feature verification works"""
+        result = verify_feature()
+        self.assertTrue(result)
+
+if __name__ == '__main__':
     unittest.main()
