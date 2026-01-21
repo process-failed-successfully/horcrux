@@ -3,57 +3,56 @@ package main
 import (
 	"fmt"
 	"log"
-	"testing"
-
 	"horcruxkv/internal/storage"
+	"horcruxkv/internal/retrieval"
 )
 
-func TestRetrieveKeyValueIntegration(t *testing.T) {
-	// Step 1: Create storage instance
-	store := storage.NewStorage()
-
-	// Step 2: Store a key-value pair
-	key := "test"
-	value := []byte("data")
-
-	err := store.Store(key, value)
-	if err != nil {
-		t.Fatalf("Step 2 failed: Failed to store key-value pair: %v", err)
-	}
-	fmt.Println("Step 2: Successfully stored key-value pair")
-
-	// Step 3: Retrieve the value using the key
-	retrieved, err := store.Get(key)
-	if err != nil {
-		t.Fatalf("Step 3 failed: Failed to retrieve value: %v", err)
-	}
-	fmt.Println("Step 3: Successfully retrieved value")
-
-	// Step 4: Verify the retrieved value matches the stored value
-	if string(retrieved) != string(value) {
-		t.Fatalf("Step 3 failed: Retrieved value '%s' does not match stored value '%s'", string(retrieved), string(value))
-	}
-	fmt.Println("Step 3: Verified retrieved value matches stored value")
-
-	// Step 5: Check for error handling on non-existent keys
-	_, err = store.Get("nonexistent")
-	if err == nil {
-		t.Fatal("Step 4 failed: Expected error for non-existent key")
-	}
-	if err.Error() != "key not found" {
-		t.Fatalf("Step 4 failed: Expected 'key not found' error, got '%v'", err)
-	}
-	fmt.Println("Step 4: Verified error handling for non-existent keys")
-}
-
 func main() {
-	// Run the integration test
-	t := &testing.T{}
-	TestRetrieveKeyValueIntegration(t)
+	// Initialize storage and retriever
+	store := storage.NewStorage()
+	retriever := retrieval.NewRetriever(store)
 
-	if !t.Failed() {
-		fmt.Println("\n✓ All integration tests passed!")
-	} else {
-		log.Fatal("Integration tests failed")
+	// Test 1: Store and retrieve a key-value pair
+	key := "test"
+	value := "Hello, World!"
+	store.Store(key, []byte(value))
+
+	retrieved, err := retriever.GetString(key)
+	if err != nil {
+		log.Fatalf("Failed to retrieve value: %v", err)
 	}
+
+	if retrieved != value {
+		log.Fatalf("Retrieved value doesn't match. Expected: %s, Got: %s", value, retrieved)
+	}
+	fmt.Printf("Successfully retrieved key '%s' with value '%s'\n", key, retrieved)
+
+	// Test 2: Try to retrieve non-existent key
+	_, err = retriever.Get("non_existent")
+	if err == nil {
+		log.Fatal("Expected error for non-existent key, got nil")
+	}
+	fmt.Println("Expected error for non-existent key")
+
+	// Test 3: Check if key exists
+	exists, err := retriever.Exists(key)
+	if err != nil {
+		log.Fatalf("Exists check failed: %v", err)
+	}
+	if !exists {
+		log.Fatal("Expected key to exist")
+	}
+	fmt.Printf("Key '%s' exists: %t\n", key, exists)
+
+	// Test 4: Check non-existent key
+	exists, err = retriever.Exists("non_existent")
+	if err != nil {
+		log.Fatalf("Exists check failed: %v", err)
+	}
+	if exists {
+		log.Fatal("Expected non-existent key to not exist")
+	}
+	fmt.Printf("Non-existent key exists: %t\n", exists)
+
+	fmt.Println("All integration tests passed!")
 }
