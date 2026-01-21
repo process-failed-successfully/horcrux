@@ -11,6 +11,7 @@ import sys
 import time
 import threading
 import random
+import socket
 from typing import Dict, Any, Optional, List, Set
 from dataclasses import dataclass
 
@@ -25,6 +26,7 @@ class Node:
     port: int
     last_seen: float
     status: str = "alive"
+    failures: int = 0
 
 class SWIMGossipProvider:
     """
@@ -68,6 +70,7 @@ class SWIMGossipProvider:
         self.gossip_interval = self.config.get("gossip_interval", 1.0)
         self.ping_timeout = self.config.get("ping_timeout", 0.5)
         self.probe_timeout = self.config.get("probe_timeout", 1.0)
+        self.failure_threshold = self.config.get("failure_threshold", 3)
 
         # Validate configuration values
         self._validate_config_values()
@@ -106,6 +109,9 @@ class SWIMGossipProvider:
         if not isinstance(self.probe_timeout, (int, float)) or self.probe_timeout <= 0:
             raise ValueError("probe_timeout must be a positive number")
 
+        if not isinstance(self.failure_threshold, int) or self.failure_threshold <= 0:
+            raise ValueError("failure_threshold must be a positive integer")
+
     def add_node(self, node_id: str, address: str, port: int) -> None:
         """
         Add a node to the local node list.
@@ -121,7 +127,8 @@ class SWIMGossipProvider:
                 address=address,
                 port=port,
                 last_seen=time.time(),
-                status="alive"
+                status="alive",
+                failures=0
             )
 
     def mark_node_failed(self, node_id: str) -> None:
@@ -157,6 +164,74 @@ class SWIMGossipProvider:
             if node_id in self.nodes:
                 self.nodes[node_id].last_seen = time.time()
                 self.nodes[node_id].status = "alive"
+                self.nodes[node_id].failures = 0
+
+    def _ping_node(self, node_id: str) -> bool:
+        """
+        Ping a node to check if it's alive.
+
+        Args:
+            node_id: Unique identifier for the node to ping
+
+        Returns:
+            True if node is alive, False otherwise
+        """
+        with self.lock:
+            if node_id not in self.nodes:
+                return False
+
+            node = self.nodes[node_id]
+
+            # Skip self
+            if node_id == self.node_id:
+                return True
+
+            try:
+                # Create a socket connection to test if the node is reachable
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(self.ping_timeout)
+                result = sock.connect_ex((node.address, node.port))
+                sock.close()
+
+                if result == 0:
+                    return True
+                else:
+                    return False
+            except (socket.timeout, ConnectionRefusedError, OSError):
+                return False
+
+    def _perform_gossip(self) -> None:
+        """
+        Perform a single gossip round.
+        """
+        with self.lock:
+            # Get a list of all nodes (excluding self)
+            other_nodes = [node_id for node_id in self.nodes.keys() if node_id != self.node_id]
+
+            if not other_nodes:
+                # No other nodes to gossip with
+                self._update_node(self.node_id)
+                return
+
+            # Select a random node to gossip with
+            target_node_id = random.choice(other_nodes)
+            target_node = self.nodes[target_node_id]
+
+            # Try to ping the target node
+            if not self._ping_node(target_node_id):
+                # Ping failed, increment failure count
+                self.nodes[target_node_id].failures += 1
+
+                # Check if we've exceeded the failure threshold
+                if self.nodes[target_node_id].failures >= self.failure_threshold:
+                    print(f"Node {target_node_id} at {target_node.address}:{target_node.port} marked as failed")
+                    self.mark_node_failed(target_node_id)
+            else:
+                # Ping succeeded, update node
+                self._update_node(target_node_id)
+
+            # Update self
+            self._update_node(self.node_id)
 
     def _gossip_loop(self) -> None:
         """
@@ -164,23 +239,12 @@ class SWIMGossipProvider:
         """
         while self.running:
             try:
-                # Simulate gossip protocol
+                # Perform gossip protocol
                 self._perform_gossip()
                 time.sleep(self.gossip_interval)
             except Exception as e:
                 print(f"Error in gossip loop: {e}")
                 time.sleep(1)
-
-    def _perform_gossip(self) -> None:
-        """
-        Perform a single gossip round.
-        """
-        # In a real implementation, this would:
-        # 1. Select a random node to gossip with
-        # 2. Exchange node lists
-        # 3. Update local state
-        # For now, we just update our own timestamp
-        self._update_node(self.node_id)
 
     def start(self) -> None:
         """
@@ -217,7 +281,8 @@ class SWIMGossipProvider:
                     "address": node.address,
                     "port": node.port,
                     "last_seen": node.last_seen,
-                    "status": node.status
+                    "status": node.status,
+                    "failures": node.failures
                 }
                 for node in self.nodes.values()
             ]
@@ -235,7 +300,8 @@ class SWIMGossipProvider:
             "port": self.port,
             "gossip_interval": self.gossip_interval,
             "ping_timeout": self.ping_timeout,
-            "probe_timeout": self.probe_timeout
+            "probe_timeout": self.probe_timeout,
+            "failure_threshold": self.failure_threshold
         }
 
 def main():
