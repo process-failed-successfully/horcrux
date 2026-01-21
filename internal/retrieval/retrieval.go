@@ -5,7 +5,7 @@ import (
 	"horcruxkv/internal/storage"
 )
 
-// Retriever handles key-value retrieval operations
+// Retriever handles retrieval operations
 type Retriever struct {
 	store *storage.Storage
 }
@@ -23,26 +23,32 @@ func (r *Retriever) Get(key string) ([]byte, error) {
 		return nil, errors.New("key cannot be empty")
 	}
 
-	value, err := r.store.Get(key)
-	if err != nil {
-		return nil, err
-	}
-	return value, nil
+	return r.store.Get(key)
 }
 
-// GetString retrieves a value by key and returns it as a string
-func (r *Retriever) GetString(key string) (string, error) {
-	value, err := r.Get(key)
-	if err != nil {
-		return "", err
+// GetMultiple retrieves multiple values by keys
+func (r *Retriever) GetMultiple(keys []string) (map[string][]byte, error) {
+	if len(keys) == 0 {
+		return nil, errors.New("keys list cannot be empty")
 	}
-	return string(value), nil
+
+	result := make(map[string][]byte)
+	for _, key := range keys {
+		value, err := r.store.Get(key)
+		if err != nil {
+			return nil, err
+		}
+		result[key] = value
+	}
+
+	return result, nil
 }
 
-// Exists checks if a key exists in the store
-func (r *Retriever) Exists(key string) (bool, error) {
+// Has checks if a key exists
+func (r *Retriever) Has(key string) (bool, error) {
 	if key == "" {
 		return false, errors.New("key cannot be empty")
 	}
+
 	return r.store.Has(key), nil
 }

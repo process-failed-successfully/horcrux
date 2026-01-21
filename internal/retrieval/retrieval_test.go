@@ -5,14 +5,18 @@ import (
 	"horcruxkv/internal/storage"
 )
 
-func TestRetrieveKeyValue(t *testing.T) {
+func TestGet(t *testing.T) {
 	store := storage.NewStorage()
 	retriever := NewRetriever(store)
 
-	// Store a test value
-	key := "test"
-	value := []byte("test_data")
-	store.Store(key, value)
+	key := "test_key"
+	value := []byte("test_value")
+
+	// Store a value first
+	err := store.Store(key, value)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
+	}
 
 	// Retrieve the value
 	retrieved, err := retriever.Get(key)
@@ -21,78 +25,103 @@ func TestRetrieveKeyValue(t *testing.T) {
 	}
 
 	if string(retrieved) != string(value) {
-		t.Errorf("Retrieved value doesn't match. Expected: %s, Got: %s", string(value), string(retrieved))
+		t.Errorf("Retrieved value doesn't match stored value")
 	}
 }
 
-func TestRetrieveNonExistentKey(t *testing.T) {
+func TestGetNonExistentKey(t *testing.T) {
 	store := storage.NewStorage()
 	retriever := NewRetriever(store)
 
 	_, err := retriever.Get("non_existent_key")
 	if err == nil {
-		t.Error("Expected error for non-existent key, got nil")
+		t.Error("Expected error for non-existent key")
 	}
 }
 
-func TestRetrieveEmptyKey(t *testing.T) {
+func TestEmptyKey(t *testing.T) {
 	store := storage.NewStorage()
 	retriever := NewRetriever(store)
 
 	_, err := retriever.Get("")
 	if err == nil {
-		t.Error("Expected error for empty key, got nil")
+		t.Error("Expected error for empty key")
 	}
 }
 
-func TestGetString(t *testing.T) {
+func TestGetMultiple(t *testing.T) {
 	store := storage.NewStorage()
 	retriever := NewRetriever(store)
 
-	key := "test"
-	value := "test_string"
-	store.Store(key, []byte(value))
-
-	result, err := retriever.GetString(key)
-	if err != nil {
-		t.Fatalf("Failed to retrieve string: %v", err)
+	// Store multiple values
+	keys := []string{"key1", "key2", "key3"}
+	for _, key := range keys {
+		err := store.Store(key, []byte("value_"+key))
+		if err != nil {
+			t.Fatalf("Failed to store value for key %s: %v", key, err)
+		}
 	}
 
-	if result != value {
-		t.Errorf("Retrieved string doesn't match. Expected: %s, Got: %s", value, result)
+	// Retrieve multiple values
+	results, err := retriever.GetMultiple(keys)
+	if err != nil {
+		t.Fatalf("Failed to retrieve multiple values: %v", err)
+	}
+
+	// Verify all values
+	for _, key := range keys {
+		expected := "value_" + key
+		if string(results[key]) != expected {
+			t.Errorf("Value mismatch for key %s", key)
+		}
 	}
 }
 
-func TestExists(t *testing.T) {
+func TestGetMultipleWithNonExistentKey(t *testing.T) {
 	store := storage.NewStorage()
 	retriever := NewRetriever(store)
 
-	key := "test"
-	store.Store(key, []byte("value"))
-
-	exists, err := retriever.Exists(key)
+	// Store one value
+	err := store.Store("key1", []byte("value_key1"))
 	if err != nil {
-		t.Fatalf("Exists check failed: %v", err)
-	}
-	if !exists {
-		t.Error("Expected key to exist")
+		t.Fatalf("Failed to store value: %v", err)
 	}
 
-	exists, err = retriever.Exists("non_existent")
+	// Try to retrieve with non-existent key
+	_, err = retriever.GetMultiple([]string{"key1", "non_existent"})
+	if err == nil {
+		t.Error("Expected error for non-existent key in multiple retrieval")
+	}
+}
+
+func TestHas(t *testing.T) {
+	store := storage.NewStorage()
+	retriever := NewRetriever(store)
+
+	key := "test_key"
+	value := []byte("test_value")
+
+	// Key should not exist initially
+	exists, err := retriever.Has(key)
 	if err != nil {
-		t.Fatalf("Exists check failed: %v", err)
+		t.Fatalf("Failed to check key existence: %v", err)
 	}
 	if exists {
-		t.Error("Expected non-existent key to not exist")
+		t.Error("Key should not exist initially")
 	}
-}
 
-func TestExistsEmptyKey(t *testing.T) {
-	store := storage.NewStorage()
-	retriever := NewRetriever(store)
+	// Store the value
+	err = store.Store(key, value)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
+	}
 
-	_, err := retriever.Exists("")
-	if err == nil {
-		t.Error("Expected error for empty key, got nil")
+	// Key should exist now
+	exists, err = retriever.Has(key)
+	if err != nil {
+		t.Fatalf("Failed to check key existence: %v", err)
+	}
+	if !exists {
+		t.Error("Key should exist after storage")
 	}
 }

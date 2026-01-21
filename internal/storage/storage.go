@@ -30,7 +30,6 @@ func (s *Storage) Store(key string, value []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Allow overwriting existing keys
 	s.data[key] = value
 	return nil
 }
@@ -48,6 +47,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	if !exists {
 		return nil, errors.New("key not found")
 	}
+
 	return value, nil
 }
 

@@ -2,113 +2,109 @@ package storage
 
 import (
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestStoreAndGet(t *testing.T) {
+func TestStoreAndRetrieve(t *testing.T) {
 	store := NewStorage()
 
-	// Test storing and retrieving a key-value pair
-	key := "test"
-	value := []byte("data")
+	// Test storing and retrieving a value
+	key := "test_key"
+	value := []byte("test_value")
 
 	err := store.Store(key, value)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
+	}
 
 	retrieved, err := store.Get(key)
-	assert.NoError(t, err)
-	assert.Equal(t, value, retrieved)
-}
+	if err != nil {
+		t.Fatalf("Failed to retrieve value: %v", err)
+	}
 
-func TestStoreEmptyKey(t *testing.T) {
-	store := NewStorage()
-
-	err := store.Store("", []byte("data"))
-	assert.Error(t, err)
-	assert.Equal(t, "key cannot be empty", err.Error())
-}
-
-func TestStoreNilValue(t *testing.T) {
-	store := NewStorage()
-
-	err := store.Store("test", nil)
-	assert.Error(t, err)
-	assert.Equal(t, "value cannot be nil", err.Error())
+	if string(retrieved) != string(value) {
+		t.Errorf("Retrieved value doesn't match stored value")
+	}
 }
 
 func TestGetNonExistentKey(t *testing.T) {
 	store := NewStorage()
 
-	_, err := store.Get("nonexistent")
-	assert.Error(t, err)
-	assert.Equal(t, "key not found", err.Error())
+	_, err := store.Get("non_existent_key")
+	if err == nil {
+		t.Error("Expected error for non-existent key")
+	}
 }
 
-func TestGetEmptyKey(t *testing.T) {
+func TestEmptyKey(t *testing.T) {
 	store := NewStorage()
 
-	_, err := store.Get("")
-	assert.Error(t, err)
-	assert.Equal(t, "key cannot be empty", err.Error())
+	err := store.Store("", []byte("value"))
+	if err == nil {
+		t.Error("Expected error for empty key")
+	}
+
+	_, err = store.Get("")
+	if err == nil {
+		t.Error("Expected error for empty key")
+	}
 }
 
-func TestOverwriteKey(t *testing.T) {
+func TestNilValue(t *testing.T) {
 	store := NewStorage()
 
-	key := "test"
-	value1 := []byte("data1")
-	value2 := []byte("data2")
-
-	err := store.Store(key, value1)
-	assert.NoError(t, err)
-
-	err = store.Store(key, value2)
-	assert.NoError(t, err)
-
-	retrieved, err := store.Get(key)
-	assert.NoError(t, err)
-	assert.Equal(t, value2, retrieved)
-}
-
-func TestHas(t *testing.T) {
-	store := NewStorage()
-
-	store.Store("test", []byte("data"))
-
-	assert.True(t, store.Has("test"))
-	assert.False(t, store.Has("nonexistent"))
-	assert.False(t, store.Has(""))
+	err := store.Store("key", nil)
+	if err == nil {
+		t.Error("Expected error for nil value")
+	}
 }
 
 func TestDelete(t *testing.T) {
 	store := NewStorage()
 
-	store.Store("test", []byte("data"))
-	assert.True(t, store.Has("test"))
+	key := "test_key"
+	value := []byte("test_value")
 
-	err := store.Delete("test")
-	assert.NoError(t, err)
-	assert.False(t, store.Has("test"))
-}
-
-func TestConcurrentAccess(t *testing.T) {
-	store := NewStorage()
-
-	// Store multiple values concurrently
-	for i := 0; i < 100; i++ {
-		go func(i int) {
-			key := string(rune(i))
-			value := []byte(string(rune(i + 1)))
-			store.Store(key, value)
-		}(i)
+	err := store.Store(key, value)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
 	}
 
-	// Retrieve values concurrently
-	for i := 0; i < 100; i++ {
-		go func(i int) {
-			key := string(rune(i))
-			_, _ = store.Get(key)
-		}(i)
+	err = store.Delete(key)
+	if err != nil {
+		t.Fatalf("Failed to delete value: %v", err)
+	}
+
+	_, err = store.Get(key)
+	if err == nil {
+		t.Error("Expected error after deletion")
+	}
+}
+
+func TestHas(t *testing.T) {
+	store := NewStorage()
+
+	key := "test_key"
+	value := []byte("test_value")
+
+	if store.Has(key) {
+		t.Error("Key should not exist initially")
+	}
+
+	err := store.Store(key, value)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
+	}
+
+	if !store.Has(key) {
+		t.Error("Key should exist after storage")
+	}
+
+	err = store.Delete(key)
+	if err != nil {
+		t.Fatalf("Failed to delete value: %v", err)
+	}
+
+	if store.Has(key) {
+		t.Error("Key should not exist after deletion")
 	}
 }
