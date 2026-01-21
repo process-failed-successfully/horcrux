@@ -96,7 +96,7 @@ func (d *DiscoveryService) discoveryLoop() {
 		select {
 		case <-ticker.C:
 			d.discoverNodes()
-		case <-d.swim.ctx.Done():
+		case <-d.swim.done:
 			return
 		}
 	}

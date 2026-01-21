@@ -17,6 +17,12 @@ func TestDiscoveryServiceStartStop(t *testing.T) {
 	}
 
 	swim := NewSWIM(config)
+	// Start SWIM before starting discovery
+	if err := swim.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM: %v", err)
+	}
+	defer swim.Stop()
+
 	discovery := NewDiscoveryService(swim, config.DiscoveryConfig)
 
 	// Test Start
@@ -59,6 +65,11 @@ func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
 	}
 
 	swim1 := NewSWIM(config1)
+	if err := swim1.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM1: %v", err)
+	}
+	defer swim1.Stop()
+
 	discovery1 := NewDiscoveryService(swim1, config1.DiscoveryConfig)
 
 	// Create second node with first node as seed
@@ -73,15 +84,23 @@ func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
 	}
 
 	swim2 := NewSWIM(config2)
+	if err := swim2.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM2: %v", err)
+	}
+	defer swim2.Stop()
+
 	discovery2 := NewDiscoveryService(swim2, config2.DiscoveryConfig)
 
 	// Start both nodes
 	if err := discovery1.Start(); err != nil {
 		t.Fatalf("Failed to start discovery1: %v", err)
 	}
+	defer discovery1.Stop()
+
 	if err := discovery2.Start(); err != nil {
 		t.Fatalf("Failed to start discovery2: %v", err)
 	}
+	defer discovery2.Stop()
 
 	// Give time for discovery
 	time.Sleep(2 * time.Second)
@@ -99,10 +118,6 @@ func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
 	if !foundNode1 {
 		t.Fatal("Node2 did not discover node1")
 	}
-
-	// Cleanup
-	discovery1.Stop()
-	discovery2.Stop()
 }
 
 func TestDiscoveryServiceHandleDiscovery(t *testing.T) {
@@ -116,6 +131,11 @@ func TestDiscoveryServiceHandleDiscovery(t *testing.T) {
 	}
 
 	swim := NewSWIM(config)
+	if err := swim.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM: %v", err)
+	}
+	defer swim.Stop()
+
 	discovery := NewDiscoveryService(swim, config.DiscoveryConfig)
 
 	// Start discovery service
@@ -150,6 +170,11 @@ func TestDiscoveryServiceHandleNodesRequest(t *testing.T) {
 	}
 
 	swim := NewSWIM(config)
+	if err := swim.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM: %v", err)
+	}
+	defer swim.Stop()
+
 	discovery := NewDiscoveryService(swim, config.DiscoveryConfig)
 
 	// Start discovery service
