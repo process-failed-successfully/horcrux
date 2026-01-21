@@ -1,170 +1,166 @@
+#!/usr/bin/env python3
 """
-Unit tests for SWIM Gossip Provider.
+Unit tests for SWIM Gossip Provider
 """
 
 import asyncio
-import pytest
+import unittest
 import time
-from internal.gossip.swim_provider import SWIMGossipProvider, Node
+from internal.gossip.swim_gossip import SWIMGossipProvider
 
-@pytest.mark.asyncio
-async def test_swim_gossip_initialization():
-    """Test that the SWIM gossip provider initializes correctly."""
-    provider = SWIMGossipProvider(
-        node_id="test_node_1",
-        address="127.0.0.1",
-        port=8001
-    )
+class TestSWIMGossipProvider(unittest.TestCase):
+    """Test cases for SWIM Gossip Provider."""
 
-    assert provider.node_id == "test_node_1"
-    assert provider.address == "127.0.0.1"
-    assert provider.port == 8001
-    assert provider.is_running is False
-    assert len(provider.get_membership()) == 1  # Only local node
-    assert provider.get_membership()[0].node_id == "test_node_1"
+    def setUp(self):
+        """Set up test fixtures."""
+        self.node_id = "test-node-1"
+        self.config = {
+            "gossip_interval": 0.1,
+            "ping_timeout": 0.1,
+            "ping_req_timeout": 0.2,
+            "suspect_timeout": 0.5,
+            "max_nodes": 10,
+            "seed_nodes": ["seed-node-1", "seed-node-2"]
+        }
 
-@pytest.mark.asyncio
-async def test_swim_gossip_start_stop():
-    """Test that the provider can be started and stopped gracefully."""
-    provider = SWIMGossipProvider(
-        node_id="test_node_2",
-        address="127.0.0.1",
-        port=8002
-    )
+    def test_initialization(self):
+        """Test that the provider initializes correctly."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
 
-    # Test starting
-    await provider.start()
-    assert provider.is_running is True
+        # Verify basic properties
+        self.assertEqual(provider.node_id, self.node_id)
+        self.assertEqual(provider.config["gossip_interval"], 0.1)
+        self.assertEqual(provider.config["ping_timeout"], 0.1)
 
-    # Test stopping
-    await provider.stop()
-    assert provider.is_running is False
+        # Verify nodes are initialized
+        self.assertIn(self.node_id, provider.nodes)
+        self.assertIn("seed-node-1", provider.nodes)
+        self.assertIn("seed-node-2", provider.nodes)
 
-    # Test double stop
-    await provider.stop()  # Should not raise error
-    assert provider.is_running is False
+        # Verify node count
+        self.assertEqual(len(provider.nodes), 3)  # self + 2 seeds
 
-@pytest.mark.asyncio
-async def test_swim_gossip_with_seed_nodes():
-    """Test initialization with seed nodes."""
-    seed_nodes = [("192.168.1.1", 8001), ("192.168.1.2", 8002)]
-    provider = SWIMGossipProvider(
-        node_id="test_node_3",
-        address="127.0.0.1",
-        port=8003,
-        seed_nodes=seed_nodes
-    )
+    def test_initialization_with_default_config(self):
+        """Test initialization with default configuration."""
+        provider = SWIMGossipProvider(self.node_id)
 
-    membership = provider.get_membership()
-    assert len(membership) == 3  # Local node + 2 seed nodes
+        # Verify default values
+        self.assertEqual(provider.config["gossip_interval"], 1.0)
+        self.assertEqual(provider.config["ping_timeout"], 0.5)
+        self.assertEqual(provider.config["ping_req_timeout"], 1.0)
+        self.assertEqual(provider.config["suspect_timeout"], 2.0)
+        self.assertEqual(provider.config["max_nodes"], 100)
 
-    # Check that seed nodes are in membership
-    seed_node_ids = {provider._generate_node_id(addr, port) for addr, port in seed_nodes}
-    membership_ids = {node.node_id for node in membership}
-    assert seed_node_ids.issubset(membership_ids)
+        # Verify only self node is present
+        self.assertEqual(len(provider.nodes), 1)
+        self.assertIn(self.node_id, provider.nodes)
 
-@pytest.mark.asyncio
-async def test_swim_gossip_gossip_round():
-    """Test that gossip rounds execute without errors."""
-    provider = SWIMGossipProvider(
-        node_id="test_node_4",
-        address="127.0.0.1",
-        port=8004
-    )
+    def test_invalid_config(self):
+        """Test that invalid configurations are rejected."""
+        invalid_configs = [
+            {"gossip_interval": -1},  # Negative interval
+            {"ping_timeout": 0},      # Zero timeout
+            {"max_nodes": -5},        # Negative max nodes
+            {"seed_nodes": "not-a-list"}  # Invalid seed nodes type
+        ]
 
-    await provider.start()
+        for config in invalid_configs:
+            with self.subTest(config=config):
+                with self.assertRaises(ValueError):
+                    SWIMGossipProvider(self.node_id, config)
 
-    # Let it run for a few gossip intervals
-    await asyncio.sleep(2.5)
+    def test_start_stop(self):
+        """Test that the provider can be started and stopped gracefully."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
 
-    # Should still be running
-    assert provider.is_running is True
+        # Verify provider is not running initially
+        self.assertFalse(provider.running)
 
-    # Should have at least the local node
-    assert len(provider.get_membership()) >= 1
+        # Start the provider
+        asyncio.run(provider.start())
 
-    await provider.stop()
+        # Verify provider is running
+        self.assertTrue(provider.running)
 
-@pytest.mark.asyncio
-async def test_swim_gossip_node_management():
-    """Test node management functionality."""
-    provider = SWIMGossipProvider(
-        node_id="test_node_5",
-        address="127.0.0.1",
-        port=8005
-    )
+        # Stop the provider
+        asyncio.run(provider.stop())
 
-    # Add a node manually
-    new_node = Node(
-        node_id="manual_node_1",
-        address="192.168.1.10",
-        port=9000
-    )
-    provider.membership[new_node.node_id] = new_node
+        # Verify provider is stopped
+        self.assertFalse(provider.running)
 
-    # Check membership
-    membership = provider.get_membership()
-    assert len(membership) == 2
-    assert any(node.node_id == "manual_node_1" for node in membership)
+    def test_get_nodes(self):
+        """Test getting the list of nodes."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
 
-    # Mark node as failed
-    provider.membership[new_node.node_id].is_alive = False
-    failed_nodes = provider.get_failed_nodes()
-    assert len(failed_nodes) == 1
-    assert failed_nodes[0].node_id == "manual_node_1"
+        nodes = provider.get_nodes()
 
-    # Check alive nodes
-    alive_nodes = provider.get_alive_nodes()
-    assert len(alive_nodes) == 1
-    assert alive_nodes[0].node_id == "test_node_5"
+        # Verify nodes structure
+        self.assertIn(self.node_id, nodes)
+        self.assertIn("seed-node-1", nodes)
+        self.assertIn("seed-node-2", nodes)
 
-def test_node_serialization():
-    """Test node serialization and deserialization."""
-    node = Node(
-        node_id="test_node",
-        address="127.0.0.1",
-        port=8000,
-        last_seen=12345.67,
-        is_alive=True,
-        incarnation=5
-    )
+        # Verify node info structure
+        for node_id, info in nodes.items():
+            self.assertIn("address", info)
+            self.assertIn("status", info)
+            self.assertIn("timestamp", info)
+            self.assertEqual(info["status"], "alive")
 
-    # Test to_dict
-    node_dict = node.to_dict()
-    assert node_dict['node_id'] == "test_node"
-    assert node_dict['address'] == "127.0.0.1"
-    assert node_dict['port'] == 8000
-    assert node_dict['last_seen'] == 12345.67
-    assert node_dict['is_alive'] is True
-    assert node_dict['incarnation'] == 5
+    def test_get_alive_nodes(self):
+        """Test getting the list of alive nodes."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
 
-    # Test from_dict
-    new_node = Node.from_dict(node_dict)
-    assert new_node.node_id == node.node_id
-    assert new_node.address == node.address
-    assert new_node.port == node.port
-    assert new_node.last_seen == node.last_seen
-    assert new_node.is_alive == node.is_alive
-    assert new_node.incarnation == node.incarnation
+        alive_nodes = provider.get_alive_nodes()
 
-@pytest.mark.asyncio
-async def test_swim_gossip_configuration():
-    """Test custom configuration parameters."""
-    provider = SWIMGossipProvider(
-        node_id="test_node_6",
-        address="127.0.0.1",
-        port=8006,
-        gossip_interval=0.5,
-        ping_timeout=0.2,
-        ping_req_timeout=0.1,
-        failure_threshold=2
-    )
+        # Verify all nodes are alive initially
+        self.assertEqual(len(alive_nodes), 3)
+        self.assertIn(self.node_id, alive_nodes)
+        self.assertIn("seed-node-1", alive_nodes)
+        self.assertIn("seed-node-2", alive_nodes)
 
-    assert provider.gossip_interval == 0.5
-    assert provider.ping_timeout == 0.2
-    assert provider.ping_req_timeout == 0.1
-    assert provider.failure_threshold == 2
+    def test_get_suspect_nodes(self):
+        """Test getting the list of suspect nodes."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
 
-    await provider.start()
-    assert provider.is_running is True
-    await provider.stop()
+        suspect_nodes = provider.get_suspect_nodes()
+
+        # Verify no suspect nodes initially
+        self.assertEqual(len(suspect_nodes), 0)
+
+    def test_get_failed_nodes(self):
+        """Test getting the list of failed nodes."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
+
+        failed_nodes = provider.get_failed_nodes()
+
+        # Verify no failed nodes initially
+        self.assertEqual(len(failed_nodes), 0)
+
+    def test_multiple_start_stop(self):
+        """Test that the provider can be started and stopped multiple times."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
+
+        # First start/stop cycle
+        asyncio.run(provider.start())
+        self.assertTrue(provider.running)
+
+        asyncio.run(provider.stop())
+        self.assertFalse(provider.running)
+
+        # Second start/stop cycle
+        asyncio.run(provider.start())
+        self.assertTrue(provider.running)
+
+        asyncio.run(provider.stop())
+        self.assertFalse(provider.running)
+
+    def test_str_representation(self):
+        """Test string representation of the provider."""
+        provider = SWIMGossipProvider(self.node_id, self.config)
+
+        str_repr = str(provider)
+        self.assertIn(self.node_id, str_repr)
+        self.assertIn("SWIMGossipProvider", str_repr)
+
+if __name__ == "__main__":
+    unittest.main()
