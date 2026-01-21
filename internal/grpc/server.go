@@ -39,5 +39,5 @@ func (s *Server) Stop() {
 
 // RegisterInternalService registers the InternalService with the gRPC server
 func (s *Server) RegisterInternalService() {
-	RegisterInternalServiceServer(s.grpcServer, &InternalServiceServer{})
+	RegisterInternalServiceServer(s.grpcServer, &internalServiceServer{})
 }

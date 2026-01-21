@@ -4,13 +4,13 @@ import (
 	"context"
 )
 
-// InternalServiceServer implements the InternalService service
-type InternalServiceServer struct {
+// internalServiceServer implements the InternalServiceServer interface
+type internalServiceServer struct {
 	UnimplementedInternalServiceServer
 }
 
 // Echo implements the Echo RPC method
-func (s *InternalServiceServer) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, error) {
+func (s *internalServiceServer) Echo(ctx context.Context, req *EchoRequest) (*EchoResponse, error) {
 	return &EchoResponse{
 		Message: req.GetMessage(),
 	}, nil
