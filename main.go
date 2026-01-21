@@ -14,14 +14,15 @@ const (
 )
 
 var (
-	logDir = "data/logs"
+	logDir = getLogDir()
 )
 
-func init() {
+func getLogDir() string {
 	// Allow override via environment variable for testing
 	if envDir := os.Getenv("LOG_DIR"); envDir != "" {
-		logDir = envDir
+		return envDir
 	}
+	return "data/logs"
 }
 
 type LogEntry struct {
