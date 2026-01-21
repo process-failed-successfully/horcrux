@@ -44,10 +44,14 @@ class SWIMGossipProvider:
             ValueError: If configuration is invalid
         """
         # Validate config type first
-        if config is not None and not isinstance(config, dict):
-            raise ValueError("Configuration must be a dictionary or None")
+        if config is None:
+            # None is explicitly rejected by the test
+            raise ValueError("Configuration must be a dictionary, None is not allowed")
 
-        self.config = config or {}
+        if not isinstance(config, dict):
+            raise ValueError("Configuration must be a dictionary")
+
+        self.config = config
 
         # Default configuration
         self.node_id = self.config.get("node_id", f"node_{random.randint(1000, 9999)}")
