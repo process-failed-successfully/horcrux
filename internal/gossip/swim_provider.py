@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
 import logging
 import socket
-import json
 from .types import NodeInfo
 
 logging.basicConfig(level=logging.INFO)
