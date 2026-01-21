@@ -7,23 +7,14 @@ import (
 	"time"
 )
 
-// Config holds configuration for the SWIM gossip provider
-type Config struct {
-	// NodeID is the unique identifier for this node
-	NodeID string
-	// BindAddr is the address to bind to for gossip communication
-	BindAddr string
-	// AdvertiseAddr is the address to advertise to other nodes
-	AdvertiseAddr string
-	// GossipInterval is how often to gossip with other nodes
-	GossipInterval time.Duration
-	// ProbeInterval is how often to probe for failed nodes
-	ProbeInterval time.Duration
-	// SuspicionMultiplier is the multiplier for suspicion timeout
-	SuspicionMultiplier int
-	// DiscoveryConfig holds discovery-specific configuration
-	DiscoveryConfig DiscoveryConfig
-}
+// NodeState represents the state of a node
+type NodeState int
+
+const (
+	NodeAlive NodeState = iota
+	NodeSuspected
+	NodeFailed
+)
 
 // Node represents a node in the cluster
 type Node struct {
@@ -32,16 +23,16 @@ type Node struct {
 	State   NodeState
 }
 
-// NodeState represents the state of a node
-type NodeState int
+// Config holds configuration for the SWIM gossip provider
+type Config struct {
+	NodeID         string
+	BindAddr       string
+	AdvertiseAddr  string
+	GossipInterval time.Duration
+	DiscoveryConfig
+}
 
-const (
-	NodeAlive NodeState = iota
-	NodeSuspicious
-	NodeDead
-)
-
-// SWIM is the main gossip provider implementing the SWIM protocol
+// SWIM is the main SWIM gossip provider
 type SWIM struct {
 	config Config
 	nodes  map[string]*Node
@@ -49,7 +40,8 @@ type SWIM struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
-	discovery *DiscoveryService
+	discoveryService *DiscoveryService
+	failureDetector *FailureDetector
 }
 
 // NewSWIM creates a new SWIM gossip provider
@@ -57,52 +49,38 @@ func NewSWIM(config Config) *SWIM {
 	if config.GossipInterval == 0 {
 		config.GossipInterval = 1 * time.Second
 	}
-	if config.ProbeInterval == 0 {
-		config.ProbeInterval = 1 * time.Second
-	}
-	if config.SuspicionMultiplier == 0 {
-		config.SuspicionMultiplier = 3
-	}
 
-	s := &SWIM{
+	return &SWIM{
 		config: config,
 		nodes:  make(map[string]*Node),
+		done:   make(chan struct{}),
 	}
-
-	// Add self to the node list
-	s.nodes[config.NodeID] = &Node{
-		ID:      config.NodeID,
-		Address: config.AdvertiseAddr,
-		State:   NodeAlive,
-	}
-
-	return s
 }
 
 // Start starts the SWIM gossip provider
 func (s *SWIM) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.ctx != nil {
-		return nil // Already started
-	}
-
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-	s.done = make(chan struct{})
 
-	// Start discovery service if configured
-	if len(s.config.DiscoveryConfig.SeedNodes) > 0 {
-		s.discovery = NewDiscoveryService(s, s.config.DiscoveryConfig)
-		if err := s.discovery.Start(); err != nil {
-			return err
-		}
+	// Add self to the node list
+	selfNode := &Node{
+		ID:      s.config.NodeID,
+		Address: s.config.AdvertiseAddr,
+		State:   NodeAlive,
 	}
+	s.addNode(selfNode)
+
+	// Initialize discovery service
+	s.discoveryService = NewDiscoveryService(s, s.config.DiscoveryConfig)
+	if err := s.discoveryService.Start(); err != nil {
+		return err
+	}
+
+	// Initialize failure detector
+	s.failureDetector = NewFailureDetector(s)
+	s.failureDetector.Start()
 
 	// Start gossip loop
 	go s.gossipLoop()
-	// Start failure detection loop
-	go s.failureDetectionLoop()
 
 	log.Printf("SWIM gossip provider started for node %s", s.config.NodeID)
 	return nil
@@ -110,27 +88,20 @@ func (s *SWIM) Start() error {
 
 // Stop stops the SWIM gossip provider
 func (s *SWIM) Stop() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.cancel == nil {
-		return nil // Not started
+	if s.cancel != nil {
+		s.cancel()
 	}
 
-	// Stop discovery service
-	if s.discovery != nil {
-		if err := s.discovery.Stop(); err != nil {
-			log.Printf("Error stopping discovery service: %v", err)
-		}
+	if s.discoveryService != nil {
+		s.discoveryService.Stop()
 	}
 
-	s.cancel()
-	<-s.done
+	close(s.done)
 	log.Printf("SWIM gossip provider stopped for node %s", s.config.NodeID)
 	return nil
 }
 
-// gossipLoop handles periodic gossip with other nodes
+// gossipLoop periodically gossips with other nodes
 func (s *SWIM) gossipLoop() {
 	ticker := time.NewTicker(s.config.GossipInterval)
 	defer ticker.Stop()
@@ -138,44 +109,17 @@ func (s *SWIM) gossipLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			s.gossip()
-		case <-s.ctx.Done():
-			close(s.done)
+			s.gossipWithNodes()
+		case <-s.done:
 			return
 		}
 	}
 }
 
-// failureDetectionLoop handles failure detection
-func (s *SWIM) failureDetectionLoop() {
-	ticker := time.NewTicker(s.config.ProbeInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			s.detectFailures()
-		case <-s.ctx.Done():
-			return
-		}
-	}
-}
-
-// gossip implements the gossip protocol
-func (s *SWIM) gossip() {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// TODO: Implement actual gossip protocol
-	log.Printf("Gossiping with %d nodes", len(s.nodes))
-}
-
-// detectFailures implements failure detection
-func (s *SWIM) detectFailures() {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// TODO: Implement actual failure detection
+// gossipWithNodes gossips with other nodes
+func (s *SWIM) gossipWithNodes() {
+	nodes := s.GetNodes()
+	log.Printf("Gossiping with %d nodes", len(nodes))
 }
 
 // AddNode adds a node to the cluster
@@ -189,7 +133,7 @@ func (s *SWIM) AddNode(node *Node) {
 	}
 }
 
-// GetNodes returns all known nodes
+// GetNodes returns the list of nodes
 func (s *SWIM) GetNodes() []*Node {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -199,4 +143,29 @@ func (s *SWIM) GetNodes() []*Node {
 		nodes = append(nodes, node)
 	}
 	return nodes
+}
+
+// GetNode returns a specific node by ID
+func (s *SWIM) GetNode(nodeID string) (*Node, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	node, exists := s.nodes[nodeID]
+	return node, exists
+}
+
+// updateNode updates a node in the cluster
+func (s *SWIM) updateNode(node *Node) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.nodes[node.ID] = node
+}
+
+// addNode adds a node to the cluster (internal)
+func (s *SWIM) addNode(node *Node) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.nodes[node.ID] = node
 }
