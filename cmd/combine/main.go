@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"math/big"
 	"os"
 
 	"github.com/process-failed-successfully/horcrux/internal/combine"
