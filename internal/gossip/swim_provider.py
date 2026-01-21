@@ -46,7 +46,7 @@ class SWIMGossipProvider:
         # Initialize with self
         self._update_node(node_id, address, port, status="alive")
 
-        logger.info(f"SWIM Gossip provider initialized for node {node_id}")
+        logger.info(f"SWIM Gossip provider initialized for node {self.node_id}")
 
     def _update_node(self, node_id: str, address: str, port: int, status: str = "alive") -> None:
         """Update or add a node to the local node list."""
@@ -98,7 +98,7 @@ class SWIMGossipProvider:
         self.running = True
         self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
         self.gossip_thread.start()
-        logger.info(f"SWIM Gossip provider started for node {node_id}")
+        logger.info(f"SWIM Gossip provider started for node {self.node_id}")
 
     def stop(self) -> None:
         """
@@ -108,11 +108,11 @@ class SWIMGossipProvider:
         if self.gossip_thread and self.gossip_thread.is_alive():
             self.gossip_thread.join(timeout=1.0)
             if self.gossip_thread.is_alive():
-                logger.warning(f"Gossip thread for node {node_id} did not stop gracefully")
+                logger.warning(f"Gossip thread for node {self.node_id} did not stop gracefully")
             else:
-                logger.info(f"Gossip thread for node {node_id} stopped gracefully")
+                logger.info(f"Gossip thread for node {self.node_id} stopped gracefully")
         self.gossip_thread = None
-        logger.info(f"SWIM Gossip provider stopped for node {node_id}")
+        logger.info(f"SWIM Gossip provider stopped for node {self.node_id}")
 
     def get_nodes(self) -> List[NodeInfo]:
         """Get the current list of known nodes."""
