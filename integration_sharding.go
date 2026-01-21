@@ -7,12 +7,16 @@ import (
 
 func main() {
 	// Initialize shard manager
-	shardManager := sharding.NewShardManager(3)
+	shardManager, err := sharding.NewShardManager(3, 1)
+	if err != nil {
+		fmt.Printf("Error creating shard manager: %v\n", err)
+		return
+	}
 
 	// Store a key-value pair
 	key := "test_key"
 	value := []byte("test_value")
-	err := shardManager.Store(key, value)
+	err = shardManager.Store(key, value)
 	if err != nil {
 		fmt.Printf("Error storing value: %v\n", err)
 		return
