@@ -1,8 +1,6 @@
 package split
 
 import (
-	"encoding/hex"
-	"math/big"
 	"testing"
 )
 

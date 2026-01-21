@@ -51,7 +51,7 @@ func SplitSecret(secret string, n, k int) ([]Share, error) {
 func generateRandomCoefficients(k int) ([]*big.Int, error) {
 	coefficients := make([]*big.Int, k)
 	for i := 0; i < k; i++ {
-		coeff, err := rand.Int(rand.Reader, big.NewInt(1<<256-1))
+		coeff, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 256))
 		if err != nil {
 			return nil, err
 		}
