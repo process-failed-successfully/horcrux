@@ -93,13 +93,6 @@ func TestImmutableLog(t *testing.T) {
 		t.Fatalf("Failed to append log entry: %v", err)
 	}
 
-	// Read the log file directly
-	logFile := filepath.Join(testDir, logFileName)
-	content, err := ioutil.ReadFile(logFile)
-	if err != nil {
-		t.Fatalf("Failed to read log file: %v", err)
-	}
-
 	// Try to append another entry
 	testData2 := map[string]interface{}{
 		"event": "second",
