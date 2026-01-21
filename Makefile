@@ -1,22 +1,23 @@
-.PHONY: test lint format run clean
+.PHONY: help test lint format run
+
+help:
+	@echo "Available targets:"
+	@echo "  test    - Run tests"
+	@echo "  lint    - Run linter"
+	@echo "  format  - Format code"
+	@echo "  run     - Run the application"
 
 test:
-	@echo "Running tests..."
-	python3 -m unittest discover -s . -p "test_*.py" -v
+	python3 -m unittest discover -s . -p "test_*.py"
 
 lint:
-	@echo "Running linting..."
-	python3 -m pylint example_feature.py test_example_feature.py || true
+	# Add lint command here
+	@echo "Linting not configured yet"
 
 format:
-	@echo "Formatting code..."
-	python3 -m autopep8 --in-place --aggressive example_feature.py test_example_feature.py || true
+	# Add format command here
+	@echo "Formatting not configured yet"
 
 run:
-	@echo "Running example feature..."
-	python3 example_feature.py
-
-clean:
-	@echo "Cleaning up..."
-	rm -f *.pyc __pycache__ test_*.pyc
-	rm -rf __pycache__ .pytest_cache
+	# Add run command here
+	@echo "Run command not configured yet"
