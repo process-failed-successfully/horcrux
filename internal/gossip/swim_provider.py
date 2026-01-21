@@ -36,6 +36,7 @@ class SWIMGossipProvider:
         self.probe_timeout = self.config.get('probe_timeout', 1.0)  # seconds
         self.suspicion_timeout = self.config.get('suspicion_timeout', 3.0)  # seconds
         self.max_nodes = self.config.get('max_nodes', 100)
+        self.failure_threshold = self.config.get('failure_threshold', 3)  # number of failed pings
 
         # Node state
         self.nodes: Dict[str, NodeInfo] = {}
@@ -59,13 +60,15 @@ class SWIMGossipProvider:
                 node.last_seen = time.time()
                 if status == "alive":
                     node.incarnation += 1
+                    node.failed_pings = 0  # Reset failed ping count when node is alive
             else:
                 self.nodes[node_id] = NodeInfo(
                     node_id=node_id,
                     address=address,
                     port=port,
                     status=status,
-                    incarnation=1
+                    incarnation=1,
+                    failed_pings=0
                 )
 
     def _ping_node(self, node_id: str, address: str, port: int) -> bool:
@@ -99,6 +102,10 @@ class SWIMGossipProvider:
                     # Check if node hasn't been seen for suspicion_timeout
                     if current_time - node.last_seen > self.suspicion_timeout:
                         logger.info(f"Marking node {node_id} as failed (not seen for {self.suspicion_timeout}s)")
+                        self._update_node(node_id, node.address, node.port, status="failed")
+                    # Check if node has too many failed pings
+                    elif node.failed_pings >= self.failure_threshold:
+                        logger.info(f"Marking node {node_id} as failed (too many failed pings: {node.failed_pings})")
                         self._update_node(node_id, node.address, node.port, status="failed")
 
     def _gossip_loop(self) -> None:
@@ -134,7 +141,11 @@ class SWIMGossipProvider:
                     # Try to ping the node
                     if not self._ping_node(node_id, node.address, node.port):
                         logger.debug(f"Ping failed for {node_id}")
-                        # Don't mark as failed immediately, let _check_node_failures handle it
+                        node.failed_pings += 1
+                        logger.debug(f"Failed pings for {node_id}: {node.failed_pings}")
+                    else:
+                        # Reset failed ping count if ping succeeds
+                        node.failed_pings = 0
 
     def start(self) -> None:
         """

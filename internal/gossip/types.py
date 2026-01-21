@@ -1,17 +1,15 @@
-"""
-Shared types and data structures for SWIM Gossip implementation.
-"""
-
-from dataclasses import dataclass, field
-import time
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class NodeInfo:
-    """Represents information about a node in the cluster."""
+    """
+    Information about a node in the cluster.
+    """
     node_id: str
     address: str
     port: int
     status: str = "alive"
-    last_seen: float = field(default_factory=time.time)
-    incarnation: int = 0
+    incarnation: int = 1
+    last_seen: float = 0.0
+    failed_pings: int = 0
