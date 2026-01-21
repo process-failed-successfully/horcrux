@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package internal;
+
+option go_package = "github.com/process-failed-successfully/horcrux/internal/grpc";
+
+service InternalService {
+  rpc Echo (EchoRequest) returns (EchoResponse);
+}
+
+message EchoRequest {
+  string message = 1;
+}
+
+message EchoResponse {
+  string message = 1;
+}
