@@ -3,8 +3,8 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestAppendLogEntry(t *testing.T) {
@@ -99,8 +99,6 @@ func TestImmutableLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read log file: %v", err)
 	}
-
-	originalContent := string(content)
 
 	// Try to append another entry
 	testData2 := map[string]interface{}{
