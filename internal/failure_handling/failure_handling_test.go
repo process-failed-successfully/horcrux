@@ -3,7 +3,6 @@ package failure_handling
 import (
 	"testing"
 	"horcruxkv/internal/sharding"
-	"horcruxkv/internal/storage"
 )
 
 func TestNodeFailureAndRecovery(t *testing.T) {
@@ -11,19 +10,10 @@ func TestNodeFailureAndRecovery(t *testing.T) {
 	shardManager, _ := sharding.NewShardManager(3, 1)
 	failureHandler := NewNodeFailureHandler(shardManager)
 
-	// Add nodes
-	store1 := storage.NewStorage()
-	store2 := storage.NewStorage()
-	store3 := storage.NewStorage()
-
-	failureHandler.AddNode(0, store1)
-	failureHandler.AddNode(1, store2)
-	failureHandler.AddNode(2, store3)
-
-	// Store data in node 0
+	// Store data through the shard manager
 	key := "test_key"
 	value := []byte("test_value")
-	err := store1.Store(key, value)
+	err := shardManager.Store(key, value)
 	if err != nil {
 		t.Fatalf("Failed to store value: %v", err)
 	}
@@ -37,31 +27,28 @@ func TestNodeFailureAndRecovery(t *testing.T) {
 		t.Errorf("Retrieved value doesn't match stored value")
 	}
 
-	// Simulate node failure
+	// Simulate node failure (node 0 is the primary for this key)
 	err = failureHandler.SimulateNodeFailure(0)
 	if err != nil {
 		t.Fatalf("Failed to simulate node failure: %v", err)
 	}
 
 	// Verify node is not available
-	_, err = failureHandler.GetDataFromAvailableNodes(key)
-	if err == nil {
-		t.Error("Expected error when node is not available")
-	}
-
-	// Verify node health check
 	if failureHandler.CheckNodeHealth(0) {
 		t.Error("Node should not be healthy after failure")
 	}
 
-	// Recover the node
-	newStore := storage.NewStorage()
-	err = newStore.Store(key, value)
+	// Data should still be accessible from replica (node 1)
+	retrieved, err = failureHandler.GetDataFromAvailableNodes(key)
 	if err != nil {
-		t.Fatalf("Failed to store value in new store: %v", err)
+		t.Fatalf("Failed to retrieve data from replica: %v", err)
+	}
+	if string(retrieved) != string(value) {
+		t.Errorf("Retrieved value doesn't match stored value from replica")
 	}
 
-	err = failureHandler.RecoverNode(0, newStore)
+	// Recover the node
+	err = failureHandler.RecoverNode(0)
 	if err != nil {
 		t.Fatalf("Failed to recover node: %v", err)
 	}
@@ -85,15 +72,6 @@ func TestRebalanceData(t *testing.T) {
 	shardManager, _ := sharding.NewShardManager(3, 1)
 	failureHandler := NewNodeFailureHandler(shardManager)
 
-	// Add nodes
-	store1 := storage.NewStorage()
-	store2 := storage.NewStorage()
-	store3 := storage.NewStorage()
-
-	failureHandler.AddNode(0, store1)
-	failureHandler.AddNode(1, store2)
-	failureHandler.AddNode(2, store3)
-
 	// Rebalancing should not fail
 	err := failureHandler.RebalanceData()
 	if err != nil {
@@ -109,5 +87,32 @@ func TestSimulateNodeFailureNonExistentNode(t *testing.T) {
 	err := failureHandler.SimulateNodeFailure(99)
 	if err == nil {
 		t.Error("Expected error for non-existent node")
+	}
+}
+
+func TestGetDataFromFailedNode(t *testing.T) {
+	shardManager, _ := sharding.NewShardManager(3, 1)
+	failureHandler := NewNodeFailureHandler(shardManager)
+
+	// Store data
+	key := "test_key"
+	value := []byte("test_value")
+	err := shardManager.Store(key, value)
+	if err != nil {
+		t.Fatalf("Failed to store value: %v", err)
+	}
+
+	// Fail all nodes
+	for i := 0; i < 3; i++ {
+		err = failureHandler.SimulateNodeFailure(i)
+		if err != nil {
+			t.Fatalf("Failed to simulate node failure: %v", err)
+		}
+	}
+
+	// Data should not be accessible
+	_, err = failureHandler.GetDataFromAvailableNodes(key)
+	if err == nil {
+		t.Error("Expected error when all nodes are failed")
 	}
 }

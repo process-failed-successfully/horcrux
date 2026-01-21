@@ -4,13 +4,12 @@ import (
 	"errors"
 	"sync"
 	"horcruxkv/internal/sharding"
-	"horcruxkv/internal/storage"
 )
 
 // NodeFailureHandler manages node failures and recovery
 type NodeFailureHandler struct {
 	shardManager *sharding.ShardManager
-	nodes        map[int]*storage.Storage
+	failedNodes  map[int]bool
 	mu           sync.RWMutex
 }
 
@@ -18,15 +17,8 @@ type NodeFailureHandler struct {
 func NewNodeFailureHandler(shardManager *sharding.ShardManager) *NodeFailureHandler {
 	return &NodeFailureHandler{
 		shardManager: shardManager,
-		nodes:        make(map[int]*storage.Storage),
+		failedNodes:  make(map[int]bool),
 	}
-}
-
-// AddNode adds a node to the failure handler
-func (nfh *NodeFailureHandler) AddNode(nodeID int, store *storage.Storage) {
-	nfh.mu.Lock()
-	defer nfh.mu.Unlock()
-	nfh.nodes[nodeID] = store
 }
 
 // SimulateNodeFailure simulates a node failure
@@ -34,21 +26,42 @@ func (nfh *NodeFailureHandler) SimulateNodeFailure(nodeID int) error {
 	nfh.mu.Lock()
 	defer nfh.mu.Unlock()
 
-	if _, exists := nfh.nodes[nodeID]; !exists {
+	// Check if node exists
+	nodes := nfh.shardManager.GetAllNodes()
+	found := false
+	for _, node := range nodes {
+		if node.ID == nodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
 		return errors.New("node does not exist")
 	}
 
-	// Remove the node from the map to simulate failure
-	delete(nfh.nodes, nodeID)
+	nfh.failedNodes[nodeID] = true
 	return nil
 }
 
 // RecoverNode recovers a failed node
-func (nfh *NodeFailureHandler) RecoverNode(nodeID int, store *storage.Storage) error {
+func (nfh *NodeFailureHandler) RecoverNode(nodeID int) error {
 	nfh.mu.Lock()
 	defer nfh.mu.Unlock()
 
-	nfh.nodes[nodeID] = store
+	// Check if node exists
+	nodes := nfh.shardManager.GetAllNodes()
+	found := false
+	for _, node := range nodes {
+		if node.ID == nodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errors.New("node does not exist")
+	}
+
+	delete(nfh.failedNodes, nodeID)
 	return nil
 }
 
@@ -57,18 +70,20 @@ func (nfh *NodeFailureHandler) GetDataFromAvailableNodes(key string) ([]byte, er
 	nfh.mu.RLock()
 	defer nfh.mu.RUnlock()
 
-	// Get the node for the key using the shard manager's GetNode method
-	node, err := nfh.shardManager.GetNode(key)
-	if err != nil {
-		return nil, err
+	// Get all nodes from shard manager
+	nodes := nfh.shardManager.GetAllNodes()
+
+	// Try to get data from available nodes
+	for _, node := range nodes {
+		if !nfh.failedNodes[node.ID] {
+			value, err := node.Store.Get(key)
+			if err == nil {
+				return value, nil
+			}
+		}
 	}
 
-	// Check if the node is available
-	if store, exists := nfh.nodes[node.ID]; exists {
-		return store.Get(key)
-	}
-
-	return nil, errors.New("node not available")
+	return nil, errors.New("key not found on any available node")
 }
 
 // RebalanceData rebalances data across available nodes
@@ -88,6 +103,5 @@ func (nfh *NodeFailureHandler) CheckNodeHealth(nodeID int) bool {
 	nfh.mu.RLock()
 	defer nfh.mu.RUnlock()
 
-	_, exists := nfh.nodes[nodeID]
-	return exists
+	return !nfh.failedNodes[nodeID]
 }
