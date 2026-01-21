@@ -19,6 +19,10 @@ if ! command -v node &> /dev/null; then
     apt-get install -y nodejs npm
 fi
 
+# Install Go dependencies
+echo "Installing Go dependencies..."
+go mod tidy
+
 # Print helpful information
 echo "Development environment setup complete."
 echo "To start the horcrux-node service, run:"
