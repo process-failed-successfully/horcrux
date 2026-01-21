@@ -23,6 +23,11 @@ class Node:
         if self.last_seen is None:
             self.last_seen = time.time()
 
+    @property
+    def id(self) -> str:
+        """Alias for node_id for backward compatibility."""
+        return self.node_id
+
     def to_dict(self):
         """Convert node to dictionary."""
         return {
