@@ -57,8 +57,8 @@ func (nfh *NodeFailureHandler) GetDataFromAvailableNodes(key string) ([]byte, er
 	nfh.mu.RLock()
 	defer nfh.mu.RUnlock()
 
-	// Get the shard for the key
-	shardID := nfh.shardManager.GetShardID(key)
+	// Get the shard for the key using the shard manager's GetShard method
+	shardID := nfh.shardManager.GetShard(key)
 
 	// Check if the node is available
 	if store, exists := nfh.nodes[shardID]; exists {

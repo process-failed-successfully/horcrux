@@ -7,8 +7,8 @@ import (
 )
 
 func TestNodeFailureAndRecovery(t *testing.T) {
-	// Create a shard manager with 3 nodes
-	shardManager := sharding.NewShardManager(3)
+	// Create a shard manager with 3 nodes and 1 replica
+	shardManager, _ := sharding.NewShardManager(3, 1)
 	failureHandler := NewNodeFailureHandler(shardManager)
 
 	// Add nodes
@@ -82,7 +82,7 @@ func TestNodeFailureAndRecovery(t *testing.T) {
 }
 
 func TestRebalanceData(t *testing.T) {
-	shardManager := sharding.NewShardManager(3)
+	shardManager, _ := sharding.NewShardManager(3, 1)
 	failureHandler := NewNodeFailureHandler(shardManager)
 
 	// Add nodes
@@ -102,7 +102,7 @@ func TestRebalanceData(t *testing.T) {
 }
 
 func TestSimulateNodeFailureNonExistentNode(t *testing.T) {
-	shardManager := sharding.NewShardManager(3)
+	shardManager, _ := sharding.NewShardManager(3, 1)
 	failureHandler := NewNodeFailureHandler(shardManager)
 
 	// Try to fail a non-existent node
