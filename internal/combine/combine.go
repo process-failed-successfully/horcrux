@@ -24,20 +24,16 @@ func CombineShares(shares []split.Share, threshold int) (string, error) {
 	}
 
 	// Perform Lagrange interpolation
-	secretInt := lagrangeInterpolation(shares, threshold)
+	secretInt := lagrangeInterpolation(shares)
 
 	// Convert the secret back to hex string
-	secretBytes := secretInt.Bytes()
-	secretHex := ""
-	for _, b := range secretBytes {
-		secretHex += fmt.Sprintf("%02x", b)
-	}
+	secretHex := fmt.Sprintf("%x", secretInt)
 
 	return secretHex, nil
 }
 
 // lagrangeInterpolation performs Lagrange interpolation to find the secret at x=0
-func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
+func lagrangeInterpolation(shares []split.Share) *big.Int {
 	prime := new(big.Int).Lsh(big.NewInt(1), 256) // 2^256, a large prime-like number
 	result := big.NewInt(0)
 
