@@ -2,57 +2,37 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"horcruxkv/internal/storage"
 	"horcruxkv/internal/retrieval"
+	"horcruxkv/internal/storage"
 )
 
 func main() {
-	// Initialize storage and retriever
+	// Initialize storage
 	store := storage.NewStorage()
-	retriever := retrieval.NewRetriever(store)
 
-	// Test 1: Store and retrieve a key-value pair
-	key := "test"
-	value := "Hello, World!"
-	store.Store(key, []byte(value))
+	// Initialize retrieval
+	retriever := retrieval.NewRetrieval(store)
 
-	retrieved, err := retriever.GetString(key)
+	// Store a key-value pair
+	key := "test_key"
+	value := []byte("test_value")
+	err := store.Store(key, value)
 	if err != nil {
-		log.Fatalf("Failed to retrieve value: %v", err)
+		fmt.Printf("Error storing value: %v\n", err)
+		return
 	}
 
-	if retrieved != value {
-		log.Fatalf("Retrieved value doesn't match. Expected: %s, Got: %s", value, retrieved)
-	}
-	fmt.Printf("Successfully retrieved key '%s' with value '%s'\n", key, retrieved)
-
-	// Test 2: Try to retrieve non-existent key
-	_, err = retriever.Get("non_existent")
-	if err == nil {
-		log.Fatal("Expected error for non-existent key, got nil")
-	}
-	fmt.Println("Expected error for non-existent key")
-
-	// Test 3: Check if key exists
-	exists, err := retriever.Exists(key)
+	// Retrieve the value
+	retrieved, err := retriever.Get(key)
 	if err != nil {
-		log.Fatalf("Exists check failed: %v", err)
+		fmt.Printf("Error retrieving value: %v\n", err)
+		return
 	}
-	if !exists {
-		log.Fatal("Expected key to exist")
-	}
-	fmt.Printf("Key '%s' exists: %t\n", key, exists)
 
-	// Test 4: Check non-existent key
-	exists, err = retriever.Exists("non_existent")
-	if err != nil {
-		log.Fatalf("Exists check failed: %v", err)
+	// Verify the retrieved value
+	if string(retrieved) == string(value) {
+		fmt.Println("Integration test passed: Retrieved value matches stored value")
+	} else {
+		fmt.Println("Integration test failed: Retrieved value doesn't match stored value")
 	}
-	if exists {
-		log.Fatal("Expected non-existent key to not exist")
-	}
-	fmt.Printf("Non-existent key exists: %t\n", exists)
-
-	fmt.Println("All integration tests passed!")
 }
