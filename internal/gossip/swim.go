@@ -21,6 +21,8 @@ type Config struct {
 	ProbeInterval time.Duration
 	// SuspicionMultiplier is the multiplier for suspicion timeout
 	SuspicionMultiplier int
+	// DiscoveryConfig holds discovery-specific configuration
+	DiscoveryConfig DiscoveryConfig
 }
 
 // Node represents a node in the cluster
@@ -47,6 +49,7 @@ type SWIM struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+	discovery *DiscoveryService
 }
 
 // NewSWIM creates a new SWIM gossip provider
@@ -63,7 +66,7 @@ func NewSWIM(config Config) *SWIM {
 
 	s := &SWIM{
 		config: config,
-		nodes:  make(map[string]*Node),
+		nodes:  make(map[string]node),
 	}
 
 	// Add self to the node list
@@ -88,6 +91,14 @@ func (s *SWIM) Start() error {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.done = make(chan struct{})
 
+	// Start discovery service if configured
+	if len(s.config.DiscoveryConfig.SeedNodes) > 0 {
+		s.discovery = NewDiscoveryService(s, s.config.DiscoveryConfig)
+		if err := s.discovery.Start(); err != nil {
+			return err
+		}
+	}
+
 	// Start gossip loop
 	go s.gossipLoop()
 	// Start failure detection loop
@@ -104,6 +115,13 @@ func (s *SWIM) Stop() error {
 
 	if s.cancel == nil {
 		return nil // Not started
+	}
+
+	// Stop discovery service
+	if s.discovery != nil {
+		if err := s.discovery.Stop(); err != nil {
+			log.Printf("Error stopping discovery service: %v", err)
+		}
 	}
 
 	s.cancel()
@@ -165,8 +183,10 @@ func (s *SWIM) AddNode(node *Node) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.nodes[node.ID] = node
-	log.Printf("Added node %s to cluster", node.ID)
+	if _, exists := s.nodes[node.ID]; !exists {
+		s.nodes[node.ID] = node
+		log.Printf("Added node %s to cluster", node.ID)
+	}
 }
 
 // GetNodes returns all known nodes
