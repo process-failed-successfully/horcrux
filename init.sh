@@ -4,19 +4,19 @@
 
 # Install dependencies
 echo "Installing dependencies..."
-sudo apt-get update
-sudo apt-get install -y git make
+apt-get update
+apt-get install -y git make
 
 # Check if Go is installed, if not install it
 if ! command -v go &> /dev/null; then
     echo "Go is not installed. Installing Go..."
-    sudo apt-get install -y golang
+    apt-get install -y golang
 fi
 
 # Check if Node.js is installed, if not install it
 if ! command -v node &> /dev/null; then
     echo "Node.js is not installed. Installing Node.js..."
-    sudo apt-get install -y nodejs npm
+    apt-get install -y nodejs npm
 fi
 
 # Print helpful information
