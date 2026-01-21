@@ -1,7 +1,9 @@
 import json
 
 with open('feature_list.json', 'r') as f:
-    features = json.load(f)
+    data = json.load(f)
+
+features = data.get('features', [])
 
 pending_features = [f for f in features if not f.get('passes', False)]
 
