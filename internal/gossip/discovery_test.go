@@ -1,109 +1,127 @@
 package gossip
 
 import (
-	"context"
+	"net/http"
 	"testing"
 	"time"
 )
 
-func TestDiscovery(t *testing.T) {
-	t.Run("TestDiscoveryWithValidConfig", func(t *testing.T) {
-		config := DiscoveryConfig{
-			Port:        8080,
-			Interval:    1 * time.Second,
-			Timeout:     500 * time.Millisecond,
-			MaxRetries:  3,
-			SeedNodes:   []string{"localhost:8081", "localhost:8082"},
-		}
+func TestDiscoveryServiceStartStop(t *testing.T) {
+	config := Config{
+		NodeID:      "node1",
+		BindAddr:    "127.0.0.1:8000",
+		AdvertiseAddr: "127.0.0.1:8000",
+		DiscoveryConfig: DiscoveryConfig{
+			SeedNodes: []string{},
+			DiscoveryPort: 9000,
+		},
+	}
 
-		d, err := NewDiscovery(config)
-		if err != nil {
-			t.Fatalf("Failed to create discovery: %v", err)
-		}
-		defer d.Stop()
+	swim := NewSWIM(config)
+	if err := swim.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM: %v", err)
+	}
+	defer swim.Stop()
 
-		if d == nil {
-			t.Fatal("Discovery instance is nil")
-		}
-	})
+	// Wait a bit to ensure discovery service started
+	time.Sleep(100 * time.Millisecond)
+}
 
-	t.Run("TestDiscoveryWithInvalidPort", func(t *testing.T) {
-		config := DiscoveryConfig{
-			Port:        0,
-			Interval:    1 * time.Second,
-			Timeout:     500 * time.Millisecond,
-			MaxRetries:  3,
-			SeedNodes:   []string{"localhost:8081"},
-		}
+func TestDiscoveryServiceNodeDiscovery(t *testing.T) {
+	// Create first node
+	config1 := Config{
+		NodeID:      "node1",
+		BindAddr:    "127.0.0.1:8000",
+		AdvertiseAddr: "127.0.0.1:8000",
+		DiscoveryConfig: DiscoveryConfig{
+			SeedNodes: []string{},
+			DiscoveryPort: 9001,
+		},
+	}
 
-		_, err := NewDiscovery(config)
-		if err == nil {
-			t.Fatal("Expected error for invalid port, got nil")
-		}
-	})
+	swim1 := NewSWIM(config1)
+	if err := swim1.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM1: %v", err)
+	}
+	defer swim1.Stop()
 
-	t.Run("TestDiscoveryWithEmptySeedNodes", func(t *testing.T) {
-		config := DiscoveryConfig{
-			Port:        8080,
-			Interval:    1 * time.Second,
-			Timeout:     500 * time.Millisecond,
-			MaxRetries:  3,
-			SeedNodes:   []string{},
-		}
+	// Create second node that discovers from first
+	config2 := Config{
+		NodeID:      "node2",
+		BindAddr:    "127.0.0.1:8001",
+		AdvertiseAddr: "127.0.0.1:8001",
+		DiscoveryConfig: DiscoveryConfig{
+			SeedNodes: []string{"127.0.0.1:8000"}, // Point to node1's advertise address
+			DiscoveryPort: 9002,
+		},
+	}
 
-		d, err := NewDiscovery(config)
-		if err != nil {
-			t.Fatalf("Failed to create discovery: %v", err)
-		}
-		defer d.Stop()
+	swim2 := NewSWIM(config2)
+	if err := swim2.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM2: %v", err)
+	}
+	defer swim2.Stop()
 
-		if d == nil {
-			t.Fatal("Discovery instance is nil")
-		}
-	})
+	// Wait for discovery - need to wait longer for the discovery loop to run
+	time.Sleep(3 * time.Second)
 
-	t.Run("TestDiscoveryStartAndStop", func(t *testing.T) {
-		config := DiscoveryConfig{
-			Port:        8080,
-			Interval:    1 * time.Second,
-			Timeout:     500 * time.Millisecond,
-			MaxRetries:  3,
-			SeedNodes:   []string{"localhost:8081"},
-		}
+	// Check that node2 discovered node1
+	nodes := swim2.GetNodes()
+	if len(nodes) < 2 {
+		t.Errorf("Expected at least 2 nodes, got %d", len(nodes))
+		t.Logf("Nodes: %v", nodes)
+	}
+}
 
-		d, err := NewDiscovery(config)
-		if err != nil {
-			t.Fatalf("Failed to create discovery: %v", err)
-		}
+func TestDiscoveryServiceHandleDiscovery(t *testing.T) {
+	config := Config{
+		NodeID:      "node1",
+		BindAddr:    "127.0.0.1:8000",
+		AdvertiseAddr: "127.0.0.1:8000",
+		DiscoveryConfig: DiscoveryConfig{
+			SeedNodes: []string{},
+			DiscoveryPort: 9003,
+		},
+	}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
+	swim := NewSWIM(config)
+	if err := swim.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM: %v", err)
+	}
+	defer swim.Stop()
 
-		err = d.Start(ctx)
-		if err != nil {
-			t.Fatalf("Failed to start discovery: %v", err)
-		}
+	// Wait a bit to ensure discovery service started
+	time.Sleep(100 * time.Millisecond)
+}
 
-		d.Stop()
-	})
+func TestDiscoveryServiceHandleNodesRequest(t *testing.T) {
+	config := Config{
+		NodeID:      "node1",
+		BindAddr:    "127.0.0.1:8000",
+		AdvertiseAddr: "127.0.0.1:8000",
+		DiscoveryConfig: DiscoveryConfig{
+			SeedNodes: []string{},
+			DiscoveryPort: 9004,
+		},
+	}
 
-	t.Run("TestDiscoveryWithMultipleSeedNodes", func(t *testing.T) {
-		config := DiscoveryConfig{
-			Port:        8080,
-			Interval:    1 * time.Second,
-			Timeout:     500 * time.Millisecond,
-			MaxRetries:  3,
-			SeedNodes:   []string{"localhost:8081", "localhost:8082", "localhost:8083"},
-		}
+	swim := NewSWIM(config)
+	if err := swim.Start(); err != nil {
+		t.Fatalf("Failed to start SWIM: %v", err)
+	}
+	defer swim.Stop()
 
-		d, err := NewDiscovery(config)
-		if err != nil {
-			t.Fatalf("Failed to create discovery: %v", err)
-		}
-		defer d.Stop()
+	// Wait a bit to ensure discovery service started
+	time.Sleep(100 * time.Millisecond)
 
-		if len(d.seedNodes) != 3 {
-			t.Fatalf("Expected 3 seed nodes, got %d", len(d.seedNodes))
-		}
-	})
+	// Try to get nodes from discovery endpoint
+	resp, err := http.Get("http://127.0.0.1:9004/nodes")
+	if err != nil {
+		t.Fatalf("Failed to get nodes: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
 }

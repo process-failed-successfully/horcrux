@@ -13,6 +13,9 @@ type DiscoveryConfig struct {
 	SeedNodes    []string
 	BindAddr     string
 	Interval     time.Duration
+	Port         int
+	Timeout      time.Duration
+	MaxRetries   int
 }
 
 // DiscoveryService handles node discovery
@@ -31,6 +34,15 @@ func NewDiscoveryService(swim *SWIM, config DiscoveryConfig) *DiscoveryService {
 	}
 	if config.BindAddr == "" {
 		config.BindAddr = ":8080"
+	}
+	if config.Port == 0 {
+		config.Port = 8080
+	}
+	if config.Timeout == 0 {
+		config.Timeout = 30 * time.Second
+	}
+	if config.MaxRetries == 0 {
+		config.MaxRetries = 3
 	}
 
 	return &DiscoveryService{
