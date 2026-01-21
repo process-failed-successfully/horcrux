@@ -14,7 +14,7 @@ class Node:
     last_seen: float = field(default_factory=time.time)
     metadata: Dict = field(default_factory=dict)
 
-class SWIMNodeDiscovery:
+class NodeDiscovery:
     """
     SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
     implementation for node discovery in a cluster.
