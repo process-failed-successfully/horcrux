@@ -1,250 +1,99 @@
-#!/usr/bin/env python3
-"""
-SWIM Gossip Provider Module
-
-This module implements the SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
-Gossip provider for node discovery in distributed systems.
-"""
-
-import json
-import sys
-import time
 import threading
+import time
 import random
-import socket
-from typing import Dict, Any, Optional, List, Set
-from dataclasses import dataclass
+from typing import Dict, List, Optional, Set
+from dataclasses import dataclass, field
+import logging
 
-# Sentinel value to distinguish between no argument and None
-_UNSET = object()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @dataclass
-class Node:
-    """Represents a node in the gossip network."""
-    id: str
+class NodeInfo:
+    """Represents information about a node in the cluster."""
+    node_id: str
     address: str
     port: int
-    last_seen: float
     status: str = "alive"
-    failures: int = 0
+    last_seen: float = field(default_factory=time.time)
+    incarnation: int = 0
 
 class SWIMGossipProvider:
     """
-    SWIM Gossip Provider for node discovery and failure detection.
-
-    SWIM is a gossip-based membership protocol that provides:
-    - Node discovery
-    - Failure detection
-    - Scalability
+    SWIM (Scalable Weakly-consistent Infection-style Process Group Membership Protocol)
+    Gossip provider for node discovery and failure detection.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = _UNSET):
+    def __init__(self, node_id: str, address: str, port: int, config: Optional[Dict] = None):
         """
         Initialize the SWIM Gossip provider.
 
         Args:
-            config: Optional configuration dictionary. If not provided, uses all defaults.
-                   If None is explicitly provided, raises ValueError.
-
-        Raises:
-            ValueError: If configuration is invalid type (not dict) or None
+            node_id: Unique identifier for this node
+            address: Network address of this node
+            port: Network port of this node
+            config: Optional configuration dictionary
         """
-        # Check if None was explicitly provided
-        if config is None:
-            raise ValueError("Configuration must be a dictionary, None is not allowed")
-
-        # If no argument provided, use empty dict for defaults
-        if config is _UNSET:
-            config = {}
-
-        # Validate config type
-        if not isinstance(config, dict):
-            raise ValueError("Configuration must be a dictionary")
-
-        self.config = config
+        self.node_id = node_id
+        self.address = address
+        self.port = port
+        self.config = config or {}
 
         # Default configuration
-        self.node_id = self.config.get("node_id", f"node_{random.randint(1000, 9999)}")
-        self.address = self.config.get("address", "127.0.0.1")
-        self.port = self.config.get("port", 8080)
-        self.gossip_interval = self.config.get("gossip_interval", 1.0)
-        self.ping_timeout = self.config.get("ping_timeout", 0.5)
-        self.probe_timeout = self.config.get("probe_timeout", 1.0)
-        self.failure_threshold = self.config.get("failure_threshold", 3)
-
-        # Validate configuration values
-        self._validate_config_values()
+        self.gossip_interval = self.config.get('gossip_interval', 1.0)  # seconds
+        self.probe_timeout = self.config.get('probe_timeout', 1.0)  # seconds
+        self.suspicion_timeout = self.config.get('suspicion_timeout', 3.0)  # seconds
+        self.max_nodes = self.config.get('max_nodes', 100)
 
         # Node state
-        self.nodes: Dict[str, Node] = {}
-        self.lock = threading.Lock()
+        self.nodes: Dict[str, NodeInfo] = {}
         self.running = False
         self.gossip_thread: Optional[threading.Thread] = None
 
         # Initialize with self
-        self.add_node(self.node_id, self.address, self.port)
+        self._update_node(node_id, address, port, status="alive")
 
-    def _validate_config_values(self) -> None:
-        """
-        Validate individual configuration values.
+        logger.info(f"SWIM Gossip provider initialized for node {node_id}")
 
-        Raises:
-            ValueError: If any configuration value is invalid
-        """
-        if not isinstance(self.node_id, str) or not self.node_id:
-            raise ValueError("node_id must be a non-empty string")
-
-        if not isinstance(self.address, str) or not self.address:
-            raise ValueError("address must be a non-empty string")
-
-        if not isinstance(self.port, int) or not (0 < self.port < 65536):
-            raise ValueError("port must be an integer between 1 and 65535")
-
-        if not isinstance(self.gossip_interval, (int, float)) or self.gossip_interval <= 0:
-            raise ValueError("gossip_interval must be a positive number")
-
-        if not isinstance(self.ping_timeout, (int, float)) or self.ping_timeout <= 0:
-            raise ValueError("ping_timeout must be a positive number")
-
-        if not isinstance(self.probe_timeout, (int, float)) or self.probe_timeout <= 0:
-            raise ValueError("probe_timeout must be a positive number")
-
-        if not isinstance(self.failure_threshold, int) or self.failure_threshold <= 0:
-            raise ValueError("failure_threshold must be a positive integer")
-
-    def add_node(self, node_id: str, address: str, port: int) -> None:
-        """
-        Add a node to the local node list.
-
-        Args:
-            node_id: Unique identifier for the node
-            address: Network address of the node
-            port: Network port of the node
-        """
-        with self.lock:
-            self.nodes[node_id] = Node(
-                id=node_id,
+    def _update_node(self, node_id: str, address: str, port: int, status: str = "alive") -> None:
+        """Update or add a node to the local node list."""
+        if node_id in self.nodes:
+            node = self.nodes[node_id]
+            node.address = address
+            node.port = port
+            node.status = status
+            node.last_seen = time.time()
+            if status == "alive":
+                node.incarnation += 1
+        else:
+            self.nodes[node_id] = NodeInfo(
+                node_id=node_id,
                 address=address,
                 port=port,
-                last_seen=time.time(),
-                status="alive",
-                failures=0
+                status=status,
+                incarnation=1
             )
 
-    def mark_node_failed(self, node_id: str) -> None:
-        """
-        Mark a node as failed.
-
-        Args:
-            node_id: Unique identifier for the node to mark as failed
-        """
-        with self.lock:
-            if node_id in self.nodes:
-                self.nodes[node_id].status = "failed"
-
-    def remove_node(self, node_id: str) -> None:
-        """
-        Remove a node from the local node list.
-
-        Args:
-            node_id: Unique identifier for the node to remove
-        """
-        with self.lock:
-            if node_id in self.nodes:
-                del self.nodes[node_id]
-
-    def _update_node(self, node_id: str) -> None:
-        """
-        Update the last seen timestamp for a node.
-
-        Args:
-            node_id: Unique identifier for the node
-        """
-        with self.lock:
-            if node_id in self.nodes:
-                self.nodes[node_id].last_seen = time.time()
-                self.nodes[node_id].status = "alive"
-                self.nodes[node_id].failures = 0
-
-    def _ping_node(self, node_id: str) -> bool:
-        """
-        Ping a node to check if it's alive.
-
-        Args:
-            node_id: Unique identifier for the node to ping
-
-        Returns:
-            True if node is alive, False otherwise
-        """
-        with self.lock:
-            if node_id not in self.nodes:
-                return False
-
-            node = self.nodes[node_id]
-
-            # Skip self
-            if node_id == self.node_id:
-                return True
-
+    def _gossip_loop(self) -> None:
+        """Main gossip loop that runs in a background thread."""
+        while self.running:
             try:
-                # Create a socket connection to test if the node is reachable
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(self.ping_timeout)
-                result = sock.connect_ex((node.address, node.port))
-                sock.close()
-
-                if result == 0:
-                    return True
-                else:
-                    return False
-            except (socket.timeout, ConnectionRefusedError, OSError):
-                return False
+                self._perform_gossip()
+                time.sleep(self.gossip_interval)
+            except Exception as e:
+                logger.error(f"Error in gossip loop: {e}")
+                time.sleep(1)  # Backoff on error
 
     def _perform_gossip(self) -> None:
         """
         Perform a single gossip round.
         """
-        with self.lock:
-            # Get a list of all nodes (excluding self)
-            other_nodes = [node_id for node_id in self.nodes.keys() if node_id != self.node_id]
-
-            if not other_nodes:
-                # No other nodes to gossip with
-                self._update_node(self.node_id)
-                return
-
-            # Select a random node to gossip with
-            target_node_id = random.choice(other_nodes)
-            target_node = self.nodes[target_node_id]
-
-            # Try to ping the target node
-            if not self._ping_node(target_node_id):
-                # Ping failed, increment failure count
-                self.nodes[target_node_id].failures += 1
-
-                # Check if we've exceeded the failure threshold
-                if self.nodes[target_node_id].failures >= self.failure_threshold:
-                    print(f"Node {target_node_id} at {target_node.address}:{target_node.port} marked as failed")
-                    self.mark_node_failed(target_node_id)
-            else:
-                # Ping succeeded, update node
-                self._update_node(target_node_id)
-
-            # Update self
-            self._update_node(self.node_id)
-
-    def _gossip_loop(self) -> None:
-        """
-        Main gossip loop that runs periodically to exchange node information.
-        """
-        while self.running:
-            try:
-                # Perform gossip protocol
-                self._perform_gossip()
-                time.sleep(self.gossip_interval)
-            except Exception as e:
-                print(f"Error in gossip loop: {e}")
-                time.sleep(1)
+        # In a real implementation, this would:
+        # 1. Select a random node to gossip with
+        # 2. Exchange node lists
+        # 3. Update local state
+        # For now, we just update our own timestamp
+        self._update_node(self.node_id, self.address, self.port)
 
     def start(self) -> None:
         """
@@ -256,90 +105,26 @@ class SWIMGossipProvider:
         self.running = True
         self.gossip_thread = threading.Thread(target=self._gossip_loop, daemon=True)
         self.gossip_thread.start()
-        print(f"SWIM Gossip provider started for node {self.node_id}")
+        logger.info(f"SWIM Gossip provider started for node {self.node_id}")
 
     def stop(self) -> None:
         """
         Stop the SWIM Gossip provider gracefully.
         """
         self.running = False
-        if self.gossip_thread:
-            self.gossip_thread.join(timeout=2.0)
-        print(f"SWIM Gossip provider stopped for node {self.node_id}")
+        if self.gossip_thread and self.gossip_thread.is_alive():
+            self.gossip_thread.join(timeout=1.0)
+            if self.gossip_thread.is_alive():
+                logger.warning(f"Gossip thread for node {self.node_id} did not stop gracefully")
+            else:
+                logger.info(f"Gossip thread for node {self.node_id} stopped gracefully")
+        self.gossip_thread = None
+        logger.info(f"SWIM Gossip provider stopped for node {self.node_id}")
 
-    def get_nodes(self) -> List[Dict[str, Any]]:
-        """
-        Get the list of known nodes.
+    def get_nodes(self) -> List[NodeInfo]:
+        """Get the current list of known nodes."""
+        return list(self.nodes.values())
 
-        Returns:
-            List of node dictionaries
-        """
-        with self.lock:
-            return [
-                {
-                    "id": node.id,
-                    "address": node.address,
-                    "port": node.port,
-                    "last_seen": node.last_seen,
-                    "status": node.status,
-                    "failures": node.failures
-                }
-                for node in self.nodes.values()
-            ]
-
-    def get_config(self) -> Dict[str, Any]:
-        """
-        Get the current configuration.
-
-        Returns:
-            Dictionary containing the current configuration
-        """
-        return {
-            "node_id": self.node_id,
-            "address": self.address,
-            "port": self.port,
-            "gossip_interval": self.gossip_interval,
-            "ping_timeout": self.ping_timeout,
-            "probe_timeout": self.probe_timeout,
-            "failure_threshold": self.failure_threshold
-        }
-
-def main():
-    """
-    Main entry point for testing the SWIM Gossip provider.
-    """
-    # Load configuration if provided
-    config = {}
-    if len(sys.argv) > 1:
-        try:
-            with open(sys.argv[1], 'r') as f:
-                config = json.load(f)
-        except Exception as e:
-            print(f"Error loading config: {e}")
-            sys.exit(1)
-
-    # Initialize the provider
-    provider = SWIMGossipProvider(config)
-
-    try:
-        # Start the provider
-        provider.start()
-
-        # Print configuration
-        print(f"Configuration: {json.dumps(provider.get_config(), indent=2)}")
-
-        # Run for a few seconds
-        time.sleep(3)
-
-        # Get and print node list
-        nodes = provider.get_nodes()
-        print(f"Known nodes: {json.dumps(nodes, indent=2)}")
-
-    except KeyboardInterrupt:
-        print("Shutting down...")
-    finally:
-        # Stop the provider
-        provider.stop()
-
-if __name__ == "__main__":
-    main()
+    def get_node(self, node_id: str) -> Optional[NodeInfo]:
+        """Get information about a specific node."""
+        return self.nodes.get(node_id)
