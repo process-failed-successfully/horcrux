@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Initialize the development environment for horcrux-node
+
+# Install dependencies
+echo "Installing dependencies..."
+sudo apt-get update
+sudo apt-get install -y git make
+
+# Check if Go is installed, if not install it
+if ! command -v go &> /dev/null; then
+    echo "Go is not installed. Installing Go..."
+    sudo apt-get install -y golang
+fi
+
+# Check if Node.js is installed, if not install it
+if ! command -v node &> /dev/null; then
+    echo "Node.js is not installed. Installing Node.js..."
+    sudo apt-get install -y nodejs npm
+fi
+
+# Print helpful information
+echo "Development environment setup complete."
+echo "To start the horcrux-node service, run:"
+echo "  make run"
+echo ""
+echo "To run tests, run:"
+echo "  make test"
