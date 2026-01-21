@@ -7,7 +7,7 @@ import unittest
 import json
 import time
 import threading
-from internal.gossip.swim_provider import SWIMGossipProvider
+from internal.gossip.swim_provider import SWIMGossipProvider, Node
 
 class TestSWIMGossipProvider(unittest.TestCase):
     """
@@ -21,9 +21,9 @@ class TestSWIMGossipProvider(unittest.TestCase):
         provider = SWIMGossipProvider()
         self.assertIsInstance(provider, SWIMGossipProvider)
         self.assertEqual(provider.node_id[:5], "node_")
-        self.assertEqual(provider.host, "127.0.0.1")
+        self.assertEqual(provider.address, "127.0.0.1")
         self.assertEqual(provider.port, 8080)
-        self.assertEqual(provider.config.get("gossip_interval", 1.0), 1.0)
+        self.assertEqual(provider.gossip_interval, 1.0)
 
     def test_initialization_with_config(self):
         """
@@ -31,15 +31,15 @@ class TestSWIMGossipProvider(unittest.TestCase):
         """
         config = {
             "node_id": "test_node",
-            "host": "192.168.1.1",
+            "address": "192.168.1.1",
             "port": 9090,
             "gossip_interval": 2.0
         }
         provider = SWIMGossipProvider(config)
         self.assertEqual(provider.node_id, "test_node")
-        self.assertEqual(provider.host, "192.168.1.1")
+        self.assertEqual(provider.address, "192.168.1.1")
         self.assertEqual(provider.port, 9090)
-        self.assertEqual(provider.config.get("gossip_interval"), 2.0)
+        self.assertEqual(provider.gossip_interval, 2.0)
 
     def test_start_and_stop(self):
         """
@@ -67,8 +67,8 @@ class TestSWIMGossipProvider(unittest.TestCase):
         nodes = provider.get_nodes()
         self.assertEqual(len(nodes), 2)
 
-        # Update node
-        provider.update_node("node2", "192.168.1.2", 8081)
+        # Update node using the internal method (we can access it for testing)
+        provider._update_node("node2")
         updated_nodes = provider.get_nodes()
         self.assertGreaterEqual(
             updated_nodes[1]["last_seen"],
@@ -79,7 +79,7 @@ class TestSWIMGossipProvider(unittest.TestCase):
         """
         Test that invalid configuration raises an error.
         """
-        with self.assertRaises((ValueError, AttributeError)):
+        with self.assertRaises(ValueError):
             SWIMGossipProvider("invalid_config")
 
 if __name__ == "__main__":
