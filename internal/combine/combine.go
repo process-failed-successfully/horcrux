@@ -14,6 +14,15 @@ func CombineShares(shares []split.Share, threshold int) (string, error) {
 		return "", errors.New("insufficient shares to reconstruct secret")
 	}
 
+	// Check for duplicate shares
+	seen := make(map[int]bool)
+	for _, share := range shares {
+		if seen[share.X] {
+			return "", errors.New("duplicate shares detected")
+		}
+		seen[share.X] = true
+	}
+
 	// Use Lagrange interpolation to reconstruct the secret
 	secret := lagrangeInterpolation(shares, threshold)
 
@@ -22,9 +31,13 @@ func CombineShares(shares []split.Share, threshold int) (string, error) {
 }
 
 // lagrangeInterpolation performs Lagrange interpolation to reconstruct the secret
+// We evaluate the polynomial at x=0 to get the constant term (the secret)
 func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 	// Initialize the result to 0
 	result := big.NewInt(0)
+
+	// We want to evaluate the polynomial at x=0
+	x_eval := big.NewInt(0)
 
 	// Iterate through each share
 	for i := 0; i < threshold; i++ {
@@ -38,8 +51,12 @@ func lagrangeInterpolation(shares []split.Share, threshold int) *big.Int {
 			}
 
 			x_j := big.NewInt(int64(shares[j].X))
-			denominator := new(big.Int).Sub(x_i, x_j) // x_i - x_j
-			numerator := new(big.Int).Neg(x_j)         // -x_j
+
+			// numerator = (x_eval - x_j) = (0 - x_j) = -x_j
+			numerator := new(big.Int).Neg(x_j)
+
+			// denominator = (x_i - x_j)
+			denominator := new(big.Int).Sub(x_i, x_j)
 
 			// Multiply the basis by (numerator / denominator)
 			basis.Mul(basis, numerator)
