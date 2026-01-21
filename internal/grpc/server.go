@@ -33,3 +33,7 @@ func (s *Server) Start() error {
 func (s *Server) Stop() {
 	s.grpcServer.GracefulStop()
 }
+
+func (s *Server) RegisterInternalService() {
+	RegisterInternalServiceServer(s.grpcServer, &InternalServiceServer{})
+}

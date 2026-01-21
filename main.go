@@ -8,7 +8,7 @@ import (
 
 func main() {
 	server := grpc.NewServer("50051")
-	grpc.RegisterInternalServiceServer(server.grpcServer, &grpc.InternalServiceServer{})
+	server.RegisterInternalService()
 
 	if err := server.Start(); err != nil {
 		log.Fatalf("Failed to start gRPC server: %v", err)
